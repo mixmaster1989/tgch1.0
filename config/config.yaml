@@ -9,5 +9,38 @@ model:
   name: "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
   temperature: 0.7
   max_tokens: 300
-  n_threads: 4  # Количество потоков CPU для инференса
-  n_batch: 8    # Размер батча (меньше значение - меньше памяти)
+  n_threads: 4
+  n_batch: 8
+
+# Настройки для Telegram API
+telegram_api:
+  api_id: null  # Заполните своим API ID
+  api_hash: null  # Заполните своим API Hash
+  phone: null  # Заполните своим номером телефона
+
+# Настройки для инвайтинга
+inviting:
+  safe_settings:
+    invites_per_day: 50
+    delay_between_invites: 60
+    max_invites_per_batch: 5
+    daily_reset_time: "00:00"
+
+# Настройки для комментирования
+commenting:
+  safe_settings:
+    comments_per_day: 30
+    delay_between_comments: 120
+    max_comments_per_channel: 5
+    daily_reset_time: "00:00"
+  templates:
+    - "Интересная статья! {channel_mention}"
+    - "Спасибо за информацию! Кстати, у нас в {channel_mention} тоже много полезного контента по этой теме."
+    - "Отличный пост! Мы в {channel_mention} недавно обсуждали похожую тему."
+    - "Хорошая статья! Заходите к нам в {channel_mention} за дополнительной информацией."
+    - "Полезно! В {channel_mention} есть еще много интересного по этой теме."
+    - "Согласен с автором! Подробнее об этом можно узнать в {channel_mention}."
+    - "Очень актуальная тема! Мы в {channel_mention} регулярно публикуем подобные материалы."
+    - "Интересный взгляд на проблему. В {channel_mention} есть дополнительная информация по этому вопросу."
+    - "Спасибо за пост! Если интересно узнать больше, загляните в {channel_mention}."
+    - "Отличный обзор! В {channel_mention} мы недавно опубликовали похожий материал с дополнительными деталями."

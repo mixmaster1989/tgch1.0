@@ -3,6 +3,7 @@ import os
 import logging
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers, set_bot
+from handlers_promotion import register_promotion_handlers
 from dotenv import load_dotenv
 
 # Настройка логирования
@@ -34,6 +35,7 @@ async def main():
     
     # Регистрация обработчиков
     register_handlers(dp)
+    register_promotion_handlers(dp)
     
     # Запуск бота
     print("Запуск бота...")
