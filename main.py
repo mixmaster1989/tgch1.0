@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from handlers import register_handlers
 import os
 
-TOKEN = os.getenv("TG_BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
