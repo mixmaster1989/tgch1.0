@@ -133,7 +133,8 @@ def get_check_status_keyboard(task_id):
         ]
     ])
     return keyboard
-    @router.message(F.text == "🚀 Продвижение")
+
+@router.message(F.text == "🚀 Продвижение")
 async def text_promotion(message: types.Message):
     # Проверяем, что команду отправил администратор
     if message.from_user.id != ADMIN_ID:
