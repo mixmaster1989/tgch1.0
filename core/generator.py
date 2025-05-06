@@ -1,7 +1,91 @@
 import random
 import yaml
 import os
+import time
 from datetime import datetime
+from gpt4all import GPT4All
+import threading
+
+# Путь к модели из конфигурации (будет загружен позже)
+MODEL_PATH = None
+MODEL_TEMPERATURE = 0.7
+MODEL_MAX_TOKENS = 300
+
+# Инициализация модели (ленивая загрузка)
+_model = None
+_model_lock = threading.Lock()
+
+def load_config():
+    """
+    Загружает конфигурацию из файла
+    
+    Returns:
+        dict: Конфигурация
+    """
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.yaml')
+        with open(config_path, 'r', encoding='utf-8') as file:
+            config = yaml.safe_load(file)
+        return config
+    except Exception as e:
+        print(f"[ERROR] Ошибка при загрузке конфигурации: {e}")
+        return {}
+
+def init_model_config():
+    """Инициализирует конфигурацию модели из файла config.yaml"""
+    global MODEL_PATH, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
+    
+    config = load_config()
+    if 'model' in config:
+        MODEL_PATH = config['model'].get('path', "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf")
+        MODEL_TEMPERATURE = config['model'].get('temperature', 0.7)
+        MODEL_MAX_TOKENS = config['model'].get('max_tokens', 300)
+        print(f"[INFO] Загружена конфигурация модели: {MODEL_PATH}")
+    else:
+        MODEL_PATH = "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
+        print(f"[INFO] Используется путь к модели по умолчанию: {MODEL_PATH}")
+
+# Инициализация конфигурации модели
+init_model_config()
+
+def get_model():
+    """
+    Ленивая инициализация модели GPT4All с блокировкой для потокобезопасности
+    
+    Returns:
+        GPT4All: Инициализированная модель или None в случае ошибки
+    """
+    global _model
+    
+    # Если модель уже загружена, возвращаем её
+    if _model is not None:
+        return _model
+    
+    # Блокировка для предотвращения одновременной загрузки модели из разных потоков
+    with _model_lock:
+        # Повторная проверка после получения блокировки
+        if _model is not None:
+            return _model
+            
+        try:
+            print(f"[INFO] Загрузка модели GPT4All из {MODEL_PATH}...")
+            start_time = time.time()
+            
+            # Инициализация модели с явным указанием использования CPU
+            _model = GPT4All(
+                model_path=MODEL_PATH,
+                model_type="llama",  # Указываем тип модели
+                allow_download=False,  # Запрещаем автоматическую загрузку
+                n_threads=4  # Ограничиваем количество потоков для CPU
+            )
+            
+            end_time = time.time()
+            print(f"[INFO] Модель GPT4All успешно загружена за {end_time - start_time:.2f} секунд")
+            return _model
+        except Exception as e:
+            print(f"[ERROR] Ошибка загрузки модели GPT4All: {e}")
+            print("[INFO] Используем резервный генератор на основе шаблонов")
+            return None
 
 # Загрузка шаблонов и данных
 def load_templates():
@@ -108,6 +192,66 @@ def load_hashtags():
     }
     return hashtags
 
+def generate_ai_content(topic, post_type, category):
+    """
+    Генерирует контент с использованием модели GPT4All
+    
+    Args:
+        topic (str): Тема поста
+        post_type (str): Тип поста
+        category (str): Категория поста
+        
+    Returns:
+        str: Сгенерированный контент или None в случае ошибки
+    """
+    try:
+        model = get_model()
+        if model is None:
+            return None
+            
+        # Формируем промпт для модели
+        prompt = f"""Напиши короткий пост для Telegram-канала на тему "{topic}".
+Тип поста: {post_type} (информационный, рекламный, обучающий или развлекательный).
+Категория: {category} (технологии, бизнес, лайфстайл или развлечения).
+Пост должен быть информативным, интересным и привлекательным для читателя.
+Длина поста: 3-5 предложений.
+Не используй эмодзи и хэштеги, я добавлю их сам.
+"""
+        
+        print(f"[INFO] Генерация контента для темы: {topic}")
+        start_time = time.time()
+        
+        # Устанавливаем таймаут для генерации
+        timeout = 30  # секунд
+        
+        # Генерируем ответ с ограничением по времени
+        try:
+            # Генерируем ответ с настройками из конфигурации
+            response = model.generate(
+                prompt, 
+                max_tokens=MODEL_MAX_TOKENS, 
+                temp=MODEL_TEMPERATURE,
+                top_k=40,
+                top_p=0.9,
+                repeat_penalty=1.1,
+                n_batch=8  # Уменьшаем размер батча для экономии памяти
+            )
+            
+            end_time = time.time()
+            print(f"[INFO] Контент сгенерирован за {end_time - start_time:.2f} секунд")
+            
+            # Очищаем ответ от лишних пробелов и переносов строк
+            content = response.strip()
+            
+            return content
+        except Exception as e:
+            print(f"[ERROR] Ошибка при генерации контента: {e}")
+            return None
+            
+    except Exception as e:
+        print(f"[ERROR] Ошибка при генерации контента с помощью GPT4All: {e}")
+        return None
+
 def generate_post(post_type=None, category=None):
     """
     Генерирует пост для Telegram-канала
@@ -139,8 +283,14 @@ def generate_post(post_type=None, category=None):
     # Выбираем случайную тему из выбранной категории
     topic = random.choice(topics[category])
     
-    # Выбираем случайный блок контента из выбранной категории
-    content = random.choice(content_blocks[category]).format(topic=topic.lower())
+    # Пытаемся сгенерировать контент с помощью AI
+    ai_content = generate_ai_content(topic, post_type, category)
+    
+    if ai_content:
+        content = ai_content
+    else:
+        # Если не удалось сгенерировать контент с помощью AI, используем шаблоны
+        content = random.choice(content_blocks[category]).format(topic=topic.lower())
     
     # Выбираем случайный вопрос
     question = random.choice(questions).format(topic=topic.lower())
