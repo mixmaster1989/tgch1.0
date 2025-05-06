@@ -38,6 +38,13 @@ ADMIN_ID = config.get("admin_id")
 # Временное хранилище для сгенерированных постов
 generated_posts = {}
 
+# Глобальная переменная для хранения экземпляра бота
+bot_instance = None
+
+def set_bot(bot):
+    global bot_instance
+    bot_instance = bot
+
 # Создание клавиатур
 def get_main_keyboard(is_admin=False):
     """Создает основную клавиатуру с кнопками команд"""
@@ -352,25 +359,24 @@ async def handle_generation_completion(task_id):
         post_type = task_info.get("post_type", "")
         category = task_info.get("category", "")
         
-        # Отправляем уведомление о завершении
-        bot = task_info["task"]._loop._running_task.get_name().split('_')[0]
-        
-        if is_publish:
-            # Если это запрос на публикацию, показываем предварительный просмотр
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"✅ Генерация завершена!\n\nПредварительный просмотр поста:\n\n{post}",
-                reply_markup=get_publish_confirmation_keyboard(task_id)
-            )
-        else:
-            # Иначе просто показываем сгенерированный пост
-            type_category = f"({post_type}, {category})" if post_type and category else ""
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"✅ Генерация завершена! {type_category}\n\n{post}"
-            )
+        # Используем глобальный экземпляр бота
+        if bot_instance:
+            if is_publish:
+                # Если это запрос на публикацию, показываем предварительный просмотр
+                await bot_instance.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"✅ Генерация завершена!\n\nПредварительный просмотр поста:\n\n{post}",
+                    reply_markup=get_publish_confirmation_keyboard(task_id)
+                )
+            else:
+                # Иначе просто показываем сгенерированный пост
+                type_category = f"({post_type}, {category})" if post_type and category else ""
+                await bot_instance.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"✅ Генерация завершена! {type_category}\n\n{post}"
+                )
     except asyncio.CancelledError:
         # Задача была отменена
         logger.info(f"Задача {task_id} была отменена")
@@ -382,14 +388,15 @@ async def handle_generation_completion(task_id):
             # Получаем информацию о задаче
             chat_id = task_info["chat_id"]
             message_id = task_info["message_id"]
-            bot = task_info["task"]._loop._running_task.get_name().split('_')[0]
             
-            # Отправляем уведомление об ошибке
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"❌ Произошла ошибка при генерации поста: {e}"
-            )
+            # Используем глобальный экземпляр бота
+            if bot_instance:
+                # Отправляем уведомление об ошибке
+                await bot_instance.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"❌ Произошла ошибка при генерации поста: {e}"
+                )
         except Exception as e2:
             logger.error(f"Ошибка при отправке уведомления об ошибке: {e2}")
     finally:

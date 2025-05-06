@@ -2,7 +2,7 @@ import asyncio
 import os
 import logging
 from aiogram import Bot, Dispatcher
-from handlers import register_handlers
+from handlers import register_handlers, set_bot
 from dotenv import load_dotenv
 
 # Настройка логирования
@@ -28,6 +28,9 @@ async def main():
     # Инициализация бота и диспетчера
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
+    
+    # Сохраняем экземпляр бота в handlers
+    set_bot(bot)
     
     # Регистрация обработчиков
     register_handlers(dp)
