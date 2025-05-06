@@ -4,13 +4,21 @@ import os
 import time
 from datetime import datetime
 import threading
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Отключение предупреждений CUDA
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Попытка импорта GPT4All с обработкой ошибок
 try:
     from gpt4all import GPT4All
     GPT4ALL_AVAILABLE = True
 except ImportError:
-    print("[WARNING] Библиотека gpt4all не установлена. Будет использоваться резервный генератор на основе шаблонов.")
+    logger.warning("Библиотека gpt4all не установлена. Будет использоваться резервный генератор на основе шаблонов.")
     GPT4ALL_AVAILABLE = False
 
 # Путь к модели из конфигурации (будет загружен позже)
@@ -36,7 +44,7 @@ def load_config():
             config = yaml.safe_load(file)
         return config
     except Exception as e:
-        print(f"[ERROR] Ошибка при загрузке конфигурации: {e}")
+        logger.error(f"Ошибка при загрузке конфигурации: {e}")
         return {}
 
 def init_model_config():
@@ -46,15 +54,14 @@ def init_model_config():
     config = load_config()
     if 'model' in config:
         MODEL_PATH = config['model'].get('path', "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf")
-        # Извлекаем имя модели из пути
-        MODEL_NAME = os.path.basename(MODEL_PATH)
+        MODEL_NAME = config['model'].get('name', os.path.basename(MODEL_PATH))
         MODEL_TEMPERATURE = config['model'].get('temperature', 0.7)
         MODEL_MAX_TOKENS = config['model'].get('max_tokens', 300)
-        print(f"[INFO] Загружена конфигурация модели: {MODEL_PATH}")
+        logger.info(f"Загружена конфигурация модели: {MODEL_PATH}")
     else:
         MODEL_PATH = "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
         MODEL_NAME = "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
-        print(f"[INFO] Используется путь к модели по умолчанию: {MODEL_PATH}")
+        logger.info(f"Используется путь к модели по умолчанию: {MODEL_PATH}")
 
 # Инициализация конфигурации модели
 init_model_config()
@@ -83,23 +90,37 @@ def get_model():
             return _model
             
         try:
-            print(f"[INFO] Загрузка модели GPT4All из {MODEL_PATH}...")
+            logger.info(f"Загрузка модели GPT4All из {MODEL_PATH}...")
             start_time = time.time()
             
             # Проверяем существование файла модели
             if not os.path.exists(MODEL_PATH):
-                print(f"[ERROR] Файл модели не найден: {MODEL_PATH}")
+                logger.error(f"Файл модели не найден: {MODEL_PATH}")
                 return None
             
-            # Инициализация модели с новым интерфейсом
-            _model = GPT4All(model_name=MODEL_NAME, model_path=os.path.dirname(MODEL_PATH))
+            # Подавление вывода предупреждений CUDA
+            import sys
+            original_stderr = sys.stderr
+            try:
+                from io import StringIO
+                sys.stderr = StringIO()
+                
+                # Инициализация модели с явным указанием использования CPU
+                _model = GPT4All(
+                    model_name=MODEL_NAME, 
+                    model_path=os.path.dirname(MODEL_PATH),
+                    device="cpu"  # Явно указываем использование CPU
+                )
+                
+            finally:
+                sys.stderr = original_stderr
             
             end_time = time.time()
-            print(f"[INFO] Модель GPT4All успешно загружена за {end_time - start_time:.2f} секунд")
+            logger.info(f"Модель GPT4All успешно загружена за {end_time - start_time:.2f} секунд")
             return _model
         except Exception as e:
-            print(f"[ERROR] Ошибка загрузки модели GPT4All: {e}")
-            print("[INFO] Используем резервный генератор на основе шаблонов")
+            logger.error(f"Ошибка загрузки модели GPT4All: {e}")
+            logger.info("Используем резервный генератор на основе шаблонов")
             return None
 
 # Загрузка шаблонов и данных
@@ -233,7 +254,7 @@ def generate_ai_content(topic, post_type, category):
 Не используй эмодзи и хэштеги, я добавлю их сам.
 """
         
-        print(f"[INFO] Генерация контента для темы: {topic}")
+        logger.info(f"Генерация контента для темы: {topic}")
         start_time = time.time()
         
         # Генерируем ответ с настройками из конфигурации
@@ -245,18 +266,18 @@ def generate_ai_content(topic, post_type, category):
             )
             
             end_time = time.time()
-            print(f"[INFO] Контент сгенерирован за {end_time - start_time:.2f} секунд")
+            logger.info(f"Контент сгенерирован за {end_time - start_time:.2f} секунд")
             
             # Очищаем ответ от лишних пробелов и переносов строк
             content = response.strip()
             
             return content
         except Exception as e:
-            print(f"[ERROR] Ошибка при генерации контента: {e}")
+            logger.error(f"Ошибка при генерации контента: {e}")
             return None
             
     except Exception as e:
-        print(f"[ERROR] Ошибка при генерации контента с помощью GPT4All: {e}")
+        logger.error(f"Ошибка при генерации контента с помощью GPT4All: {e}")
         return None
 
 def generate_post(post_type=None, category=None):
@@ -342,7 +363,7 @@ def generate_post_with_config(config_path=None):
         
         return generate_post()
     except Exception as e:
-        print(f"Ошибка при загрузке конфигурации: {e}")
+        logger.error(f"Ошибка при загрузке конфигурации: {e}")
         return generate_post()
 
 if __name__ == "__main__":
