@@ -3,11 +3,19 @@ import yaml
 import os
 import time
 from datetime import datetime
-from gpt4all import GPT4All
 import threading
+
+# Попытка импорта GPT4All с обработкой ошибок
+try:
+    from gpt4all import GPT4All
+    GPT4ALL_AVAILABLE = True
+except ImportError:
+    print("[WARNING] Библиотека gpt4all не установлена. Будет использоваться резервный генератор на основе шаблонов.")
+    GPT4ALL_AVAILABLE = False
 
 # Путь к модели из конфигурации (будет загружен позже)
 MODEL_PATH = None
+MODEL_NAME = None
 MODEL_TEMPERATURE = 0.7
 MODEL_MAX_TOKENS = 300
 
@@ -33,16 +41,19 @@ def load_config():
 
 def init_model_config():
     """Инициализирует конфигурацию модели из файла config.yaml"""
-    global MODEL_PATH, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
+    global MODEL_PATH, MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
     
     config = load_config()
     if 'model' in config:
         MODEL_PATH = config['model'].get('path', "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf")
+        # Извлекаем имя модели из пути
+        MODEL_NAME = os.path.basename(MODEL_PATH)
         MODEL_TEMPERATURE = config['model'].get('temperature', 0.7)
         MODEL_MAX_TOKENS = config['model'].get('max_tokens', 300)
         print(f"[INFO] Загружена конфигурация модели: {MODEL_PATH}")
     else:
         MODEL_PATH = "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
+        MODEL_NAME = "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
         print(f"[INFO] Используется путь к модели по умолчанию: {MODEL_PATH}")
 
 # Инициализация конфигурации модели
@@ -56,6 +67,10 @@ def get_model():
         GPT4All: Инициализированная модель или None в случае ошибки
     """
     global _model
+    
+    # Если GPT4All не доступен, возвращаем None
+    if not GPT4ALL_AVAILABLE:
+        return None
     
     # Если модель уже загружена, возвращаем её
     if _model is not None:
@@ -71,13 +86,13 @@ def get_model():
             print(f"[INFO] Загрузка модели GPT4All из {MODEL_PATH}...")
             start_time = time.time()
             
-            # Инициализация модели с явным указанием использования CPU
-            _model = GPT4All(
-                model_path=MODEL_PATH,
-                model_type="llama",  # Указываем тип модели
-                allow_download=False,  # Запрещаем автоматическую загрузку
-                n_threads=4  # Ограничиваем количество потоков для CPU
-            )
+            # Проверяем существование файла модели
+            if not os.path.exists(MODEL_PATH):
+                print(f"[ERROR] Файл модели не найден: {MODEL_PATH}")
+                return None
+            
+            # Инициализация модели с новым интерфейсом
+            _model = GPT4All(model_name=MODEL_NAME, model_path=os.path.dirname(MODEL_PATH))
             
             end_time = time.time()
             print(f"[INFO] Модель GPT4All успешно загружена за {end_time - start_time:.2f} секунд")
@@ -221,20 +236,12 @@ def generate_ai_content(topic, post_type, category):
         print(f"[INFO] Генерация контента для темы: {topic}")
         start_time = time.time()
         
-        # Устанавливаем таймаут для генерации
-        timeout = 30  # секунд
-        
-        # Генерируем ответ с ограничением по времени
+        # Генерируем ответ с настройками из конфигурации
         try:
-            # Генерируем ответ с настройками из конфигурации
             response = model.generate(
                 prompt, 
                 max_tokens=MODEL_MAX_TOKENS, 
-                temp=MODEL_TEMPERATURE,
-                top_k=40,
-                top_p=0.9,
-                repeat_penalty=1.1,
-                n_batch=8  # Уменьшаем размер батча для экономии памяти
+                temp=MODEL_TEMPERATURE
             )
             
             end_time = time.time()

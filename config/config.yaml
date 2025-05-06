@@ -6,6 +6,7 @@ post_schedule:
   - "19:00"
 model:
   path: "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
+  name: "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
   temperature: 0.7
   max_tokens: 300
   n_threads: 4  # Количество потоков CPU для инференса
