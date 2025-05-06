@@ -1,13 +1,20 @@
-from aiogram import Dispatcher, types
+from aiogram import Dispatcher, types, Router, F
+from aiogram.filters import Command
 from core.generator import generate_post, generate_post_with_config
 
+# Создаем роутер для обработчиков команд
+router = Router()
+
+@router.message(Command("generate"))
 async def cmd_generate(message: types.Message):
     post = generate_post_with_config()
     await message.answer(f"Сгенерировано: \n{post}")
 
+@router.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("Привет! Я помогу тебе раскрутить твой канал. Напиши /generate, чтобы начать.")
 
+@router.message(Command("help"))
 async def cmd_help(message: types.Message):
     help_text = """
 🤖 *TGE Bot* - помощник для раскрутки Telegram-канала
@@ -16,6 +23,7 @@ async def cmd_help(message: types.Message):
 /start - Начать работу с ботом
 /generate - Сгенерировать пост для канала
 /help - Показать это сообщение
+/generate_type - Сгенерировать пост определенного типа и категории
 
 Скоро будут доступны:
 - Планирование постов
@@ -24,6 +32,7 @@ async def cmd_help(message: types.Message):
     """
     await message.answer(help_text, parse_mode="Markdown")
 
+@router.message(Command("generate_type"))
 async def cmd_generate_type(message: types.Message):
     # Извлекаем аргументы команды
     args = message.text.split()[1:]
@@ -51,7 +60,5 @@ async def cmd_generate_type(message: types.Message):
                            "Категории: tech, business, lifestyle, entertainment")
 
 def register_handlers(dp: Dispatcher):
-    dp.message.register(cmd_start, commands={"start"})
-    dp.message.register(cmd_generate, commands={"generate"})
-    dp.message.register(cmd_help, commands={"help"})
-    dp.message.register(cmd_generate_type, commands={"generate_type"})
+    # Регистрируем роутер в диспетчере
+    dp.include_router(router)
