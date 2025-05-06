@@ -1,7 +1,16 @@
-from core import referral, scheduler, telemetry
+import asyncio
+from aiogram import Bot, Dispatcher
+from handlers import register_handlers
+import os
 
-if __name__ == "__main__":
-    print("TGE-MVP запущен...")
-    referral.init_referral_system()
-    scheduler.start_post_scheduler()
-    telemetry.log_startup()
+TOKEN = os.getenv("TG_BOT_TOKEN")
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+register_handlers(dp)
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
+    asyncio.run(main())
