@@ -4,10 +4,20 @@ import logging
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers, set_bot
 from handlers_promotion import register_promotion_handlers
+import logging
+
+# Настройка более подробного логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log')
+    ]
+)
 from dotenv import load_dotenv
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+# Логирование уже настроено выше
 
 # Загрузка переменных окружения из файла .env
 load_dotenv()
@@ -38,13 +48,15 @@ async def main():
     register_promotion_handlers(dp)
     
     # Запуск бота
-    print("Запуск бота...")
+    logger = logging.getLogger(__name__)
+    logger.info("Запуск бота...")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
+    logger = logging.getLogger(__name__)
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("Бот остановлен!")
+        logger.info("Бот остановлен!")
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        logger.error(f"Произошла ошибка: {e}", exc_info=True)
