@@ -1,14 +1,14 @@
 import logging
-import asyncio
 import traceback
 import sys
-from aiogram import Router, types, F, Bot
+import yaml
+import os
+from aiogram import Router, types, F, Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from .config import crypto_config
-from .smart_money_analyzer import SmartMoneyAnalyzer
-from .data_sources import DataSourceManager
-from .signal_dispatcher import SignalDispatcher
+from .config import crypto_config, load_crypto_config # Предполагаем, что load_crypto_config есть в config.py
+from .smart_money_analyzer import SmartMoneyAnalyzer # Импортируем анализатор
+from .data_sources import DataSourceManager # Импортируем менеджер источников данных
 
 # Настройка подробного логирования
 logger = logging.getLogger(__name__)
@@ -26,527 +26,622 @@ def log_exception(e, message="Произошла ошибка"):
     logger.error(f"{message}: {str(e)}")
     logger.error(traceback.format_exc())
 
-# Создаем роутер для обработчиков команд криптовалютного модуля
+# Создаем роутер для обработчиков команд криптовалютного интерфейса
 crypto_router = Router()
 
-# Глобальные переменные для хранения экземпляров классов
-data_manager = None
-analyzer = None
-signal_dispatcher = None
-monitoring_task = None
-bot_instance = None
+# Глобальная переменная для хранения экземпляра бота
+bot_instance: Bot = None
+
+# Глобальный словарь для отслеживания состояний пользователей
+user_states = {} # {user_id: {'state': 'waiting_api_key', 'api_type': 'binance'}}
 
 # Функция для установки экземпляра бота
-def set_bot(bot):
+def set_bot(bot: Bot):
     global bot_instance
     bot_instance = bot
+    logger.debug(f"Экземпляр бота установлен в telegram_interface: {bot_instance}")
+
+# Функция для сохранения крипто конфигурации
+def save_crypto_config():
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'crypto_config.yaml')
+        with open(config_path, 'w', encoding='utf-8') as file:
+            yaml.dump(crypto_config, file, default_flow_style=False)
+        logger.debug(f"Крипто конфигурация сохранена в {config_path}")
+    except Exception as e:
+        log_exception(e, "Ошибка при сохранении крипто конфигурации")
 
 # Клавиатуры
-def get_crypto_keyboard():
-    """Создает клавиатуру для криптовалютного модуля"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="📊 Анализ рынка", callback_data="crypto_analyze"),
-            InlineKeyboardButton(text="🔍 Мониторинг", callback_data="crypto_monitoring")
-        ],
-        [
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="crypto_settings"),
-            InlineKeyboardButton(text="ℹ️ Помощь", callback_data="crypto_help")
-        ],
-        [
-            InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back")
-        ]
-    ])
-    return keyboard
-
 def get_crypto_settings_keyboard():
-    """Создает клавиатуру настроек криптовалютного модуля"""
-    # Получаем текущие настройки
-    monitoring_enabled = crypto_config.get('signals', {}).get('enabled', True)
-    include_charts = crypto_config.get('signals', {}).get('include_charts', True)
-    
+    """Создает инлайн-клавиатуру для настроек крипто модуля"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text=f"{'✅' if monitoring_enabled else '❌'} Мониторинг", 
-                callback_data="crypto_toggle_monitoring"
-            ),
-            InlineKeyboardButton(
-                text=f"{'✅' if include_charts else '❌'} Графики", 
-                callback_data="crypto_toggle_charts"
-            )
-        ],
-        [
-            InlineKeyboardButton(text="🔢 Торговые пары", callback_data="crypto_pairs"),
-            InlineKeyboardButton(text="⏱ Таймфреймы", callback_data="crypto_timeframes")
-        ],
-        [
-            InlineKeyboardButton(text="🔑 API ключи", callback_data="crypto_api_keys")
-        ],
-        [
-            InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back_to_main")
-        ]
+        [InlineKeyboardButton(text="🔑 Настроить API ключи", callback_data="crypto_settings_api_keys")],
+        [InlineKeyboardButton(text="📈 Настроить торговые пары", callback_data="crypto_settings_pairs")],
+        [InlineKeyboardButton(text="🔔 Настроить сигналы", callback_data="crypto_settings_signals")],
+        [InlineKeyboardButton(text="🔙 Назад к крипто настройкам", callback_data="crypto_settings_back")]
     ])
     return keyboard
 
-def get_crypto_pairs_keyboard():
-    """Создает клавиатуру для выбора торговых пар"""
-    # Получаем текущие пары
-    pairs = crypto_config.get('monitoring', {}).get('pairs', ['BTCUSDT', 'ETHUSDT'])
-    
-    # Создаем кнопки для каждой пары
-    pair_buttons = []
-    for i in range(0, len(pairs), 2):
-        row = []
-        for j in range(2):
-            if i + j < len(pairs):
-                pair = pairs[i + j]
-                row.append(InlineKeyboardButton(text=pair, callback_data=f"crypto_pair_{pair}"))
-        pair_buttons.append(row)
-    
-    # Добавляем кнопки управления
-    pair_buttons.append([
-        InlineKeyboardButton(text="➕ Добавить", callback_data="crypto_add_pair"),
-        InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back_to_settings")
+def get_api_key_settings_keyboard():
+    """Создает инлайн-клавиатуру для выбора типа API ключа"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Binance", callback_data="crypto_settings_api_binance")],
+        # [InlineKeyboardButton(text="Bybit", callback_data="crypto_settings_api_bybit")], # Пример для других бирж
+        [InlineKeyboardButton(text="🔙 Назад к настройкам крипто", callback_data="crypto_settings_back")]
     ])
-    
-    return InlineKeyboardMarkup(inline_keyboard=pair_buttons)
+    return keyboard
 
-# Обработчики команд
+def get_signal_settings_keyboard():
+    """Создает инлайн-клавиатуру для настроек сигналов"""
+    signals_enabled = crypto_config.get('signals', {}).get('enabled', True)
+    include_charts = crypto_config.get('signals', {}).get('include_charts', True)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"Сигналы: {'✅ Вкл' if signals_enabled else '❌ Выкл'}", callback_data="crypto_settings_signals_toggle")],
+        [InlineKeyboardButton(text="Канал для сигналов", callback_data="crypto_settings_signals_channel")],
+        [InlineKeyboardButton(text=f"Графики в сигналах: {'✅ Вкл' if include_charts else '❌ Выкл'}", callback_data="crypto_settings_signals_charts_toggle")],
+        [InlineKeyboardButton(text="Кулдаун уведомлений", callback_data="crypto_settings_signals_cooldown")],
+        [InlineKeyboardButton(text="🔙 Назад к настройкам крипто", callback_data="crypto_settings_back")]
+    ])
+    return keyboard
+
+
+# --- Обработчики команд и кнопок главного крипто меню (вызываются из main_menu.py) ---
+
+# Обработчик команды /crypto или кнопки "📈 Крипто анализ"
+# Этот обработчик теперь просто вызывает меню из main_menu.py
 @crypto_router.message(Command("crypto"))
+@crypto_router.message(F.text == "📈 Крипто анализ")
 async def cmd_crypto(message: types.Message):
-    """Обработчик команды /crypto"""
-    logger.info(f"Пользователь {message.from_user.id} запустил команду /crypto")
-    
-    # Импортируем функцию из main_menu
+    logger.info(f"Пользователь {message.from_user.id} запросил крипто анализ")
+    # Проверяем, что команду отправил администратор (если нужно)
+    # from handlers import ADMIN_ID # Предполагаем, что ADMIN_ID определен в handlers.py
+    # if message.from_user.id != ADMIN_ID:
+    #     await message.answer("Эта функция доступна только администратору.")
+    #     return
+
+    # Импортируем функцию получения крипто меню из main_menu.py
     from .main_menu import get_crypto_main_menu
-    
+
     await message.answer(
-        "🚀 Криптовалютный анализатор Smart Money\n\n"
-        "Этот модуль позволяет отслеживать активность крупных игроков (Smart Money) "
-        "на криптовалютном рынке и получать сигналы о потенциальных движениях цены.\n\n"
-        "Выберите действие:",
+        "🚀 Криптовалютный анализатор Smart Money\n\nВыберите действие:",
         reply_markup=get_crypto_main_menu()
     )
 
-# Обработчики callback-запросов
-@crypto_router.callback_query(F.data == "crypto_back")
-async def process_crypto_back(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Назад'"""
-    logger.info(f"Пользователь {callback.from_user.id} нажал кнопку 'Назад'")
-    
-    await callback.message.delete()
+# --- Обработчики для подменю анализа (вызываются из main_menu.py) ---
 
-@crypto_router.callback_query(F.data == "crypto_analyze")
-async def process_crypto_analyze(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Анализ рынка'"""
-    logger.info(f"Пользователь {callback.from_user.id} запросил анализ рынка")
-    
-    # Проверяем, инициализированы ли необходимые компоненты
-    global data_manager, analyzer
-    
-    if not data_manager:
+# Обработчик кнопки "🐋 Киты"
+@crypto_router.message(F.text == "🐋 Киты")
+async def crypto_whales(message: types.Message):
+    logger.info(f"Пользователь {message.from_user.id} выбрал анализ китов")
+
+    await message.answer(
+        "⏳ Анализ транзакций китов...\n\n"
+        "Это может занять некоторое время."
+    )
+
+    try:
+        # Инициализируем источники данных
         data_manager = DataSourceManager()
         await data_manager.initialize()
-    
-    if not analyzer:
+
+        # Создаем анализатор
         analyzer = SmartMoneyAnalyzer(data_manager)
-    
-    # Отправляем сообщение о начале анализа
-    await callback.message.edit_text(
-        "⏳ Выполняется анализ рынка...\n\n"
-        "Это может занять некоторое время. Пожалуйста, подождите."
-    )
-    
-    try:
-        logger.debug(f"Начинаем анализ рынка для пользователя {callback.from_user.id}")
-        # Запускаем анализ
-        results = await analyzer.run_analysis()
-        logger.debug(f"Анализ рынка завершен, получены результаты: {results}")
-        
+
+        # Анализируем транзакции китов для всех пар
+        results = {}
+        for pair in analyzer.pairs:
+            whale_signals = await analyzer.analyze_whale_transactions(pair)
+            if whale_signals:
+                results[pair] = whale_signals
+
         # Формируем сообщение с результатами
-        message_text = "📊 Результаты анализа рынка:\n\n"
-        
-        for pair, pair_results in results.items():
-            signals = pair_results.get("signals", [])
-            price = pair_results.get("price")
-            logger.debug(f"Обрабатываем пару {pair}, цена: {price}, сигналы: {signals}")
-            
-            if signals:
-                # Группируем сигналы по типу
-                signal_types = {}
+        if results:
+            message_text = "🐋 Результаты анализа транзакций китов:\n\n"
+
+            for pair, signals in results.items():
+                message_text += f"**{pair}**\n"
+
                 for signal in signals:
-                    signal_type = signal.get("type")
-                    if signal_type not in signal_types:
-                        signal_types[signal_type] = []
-                    signal_types[signal_type].append(signal)
-                
-                message_text += f"**{pair}** - ${price:.2f}\n"
-                logger.debug(f"Сгруппированные сигналы для {pair}: {signal_types}")
-                
-                for signal_type, type_signals in signal_types.items():
-                    # Определяем общее направление сигналов
-                    long_count = sum(1 for s in type_signals if s.get("direction") == "long")
-                    short_count = sum(1 for s in type_signals if s.get("direction") == "short")
-                    
-                    direction = "LONG" if long_count > short_count else "SHORT"
-                    direction_emoji = "🟢" if direction == "LONG" else "🔴"
-                    
-                    message_text += f"{direction_emoji} {signal_type.replace('_', ' ').title()}: {direction}\n"
-                    logger.debug(f"Добавлен сигнал {signal_type}: {direction} (long: {long_count}, short: {short_count})")
-                
+                    direction = "🟢 LONG" if signal.get("direction") == "long" else "🔴 SHORT"
+                    amount_usd = signal.get("amount_usd", 0)
+
+                    message_text += f"{direction}: транзакция на ${amount_usd:,.2f}\n"
+
                 message_text += "\n"
-        
-        if message_text == "📊 Результаты анализа рынка:\n\n":
-            message_text += "Сигналов не обнаружено."
-            logger.debug("Сигналов не обнаружено")
-        
+        else:
+            message_text = "🐋 Анализ транзакций китов:\n\nНе обнаружено значительных транзакций китов."
+
+        # Закрываем соединения
+        await data_manager.close()
+
         # Отправляем результаты
-        logger.debug(f"Отправляем результаты анализа пользователю {callback.from_user.id}")
-        logger.debug(f"Сообщение: {message_text}")
-        logger.debug(f"callback.message: {callback.message}")
-        logger.debug(f"bot_instance: {bot_instance}")
-        
-        await callback.message.edit_text(
-            message_text,
-            reply_markup=get_crypto_keyboard()
+        from .main_menu import get_crypto_analysis_menu
+        await message.answer(message_text, reply_markup=get_crypto_analysis_menu())
+
+    except Exception as e:
+        log_exception(e, "Ошибка при анализе китов")
+        from .main_menu import get_crypto_analysis_menu
+        await message.answer(
+            f"❌ Произошла ошибка при анализе китов: {e}",
+            reply_markup=get_crypto_analysis_menu()
         )
-        logger.debug("Результаты анализа успешно отправлены")
-    except Exception as e:
-        log_exception(e, f"Ошибка при анализе рынка для пользователя {callback.from_user.id}")
-        try:
-            await callback.message.edit_text(
-                f"❌ Произошла ошибка при анализе рынка: {e}",
-                reply_markup=get_crypto_keyboard()
-            )
-            logger.debug("Сообщение об ошибке отправлено")
-        except Exception as e2:
-            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
-@crypto_router.callback_query(F.data == "crypto_monitoring")
-async def process_crypto_monitoring(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Мониторинг'"""
-    logger.info(f"Пользователь {callback.from_user.id} запросил управление мониторингом")
-    logger.debug(f"callback: {callback}")
-    logger.debug(f"callback.message: {callback.message}")
-    logger.debug(f"callback.bot: {callback.bot}")
-    
-    global monitoring_task
-    
+# Обработчик кнопки "📈 Ликвидность"
+@crypto_router.message(F.text == "📈 Ликвидность")
+async def crypto_liquidity(message: types.Message):
+    logger.info(f"Пользователь {message.from_user.id} выбрал анализ ликвидности")
+
+    await message.answer(
+        "⏳ Анализ зон ликвидности...\n\n"
+        "Это может занять некоторое время."
+    )
+
     try:
-        # Проверяем, запущен ли мониторинг
-        is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
-        logger.debug(f"Статус мониторинга: {'активен' if is_monitoring_active else 'неактивен'}")
-        
-        # Формируем сообщение
-        message_text = "🔍 Управление мониторингом\n\n"
-        message_text += f"Статус: {'✅ Активен' if is_monitoring_active else '❌ Неактивен'}\n\n"
-        
-        # Получаем настройки мониторинга
-        pairs = crypto_config.get('monitoring', {}).get('pairs', [])
-        timeframes = crypto_config.get('monitoring', {}).get('timeframes', [])
-        logger.debug(f"Настройки мониторинга: пары={pairs}, таймфреймы={timeframes}")
-        
-        message_text += f"Отслеживаемые пары: {', '.join(pairs)}\n"
-        message_text += f"Таймфреймы: {', '.join(timeframes)}\n\n"
-        
-        # Создаем клавиатуру
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⏹ Остановить" if is_monitoring_active else "▶️ Запустить", 
-                    callback_data="crypto_toggle_monitoring_task"
-                )
-            ],
-            [
-                InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back_to_main")
-            ]
-        ])
-        logger.debug(f"Создана клавиатура: {keyboard}")
-        
-        logger.debug(f"Отправляем сообщение: {message_text}")
-        await callback.message.edit_text(message_text, reply_markup=keyboard)
-        logger.debug("Сообщение успешно отправлено")
+        # Инициализируем источники данных
+        data_manager = DataSourceManager()
+        await data_manager.initialize()
+
+        # Создаем анализатор
+        analyzer = SmartMoneyAnalyzer(data_manager)
+
+        # Анализируем зоны ликвидности для всех пар
+        results = {}
+        for pair in analyzer.pairs:
+            liquidity_signals = await analyzer.analyze_liquidity_zones(pair)
+            if liquidity_signals:
+                results[pair] = liquidity_signals
+
+        # Формируем сообщение с результатами
+        if results:
+            message_text = "📈 Результаты анализа зон ликвидности:\n\n"
+
+            for pair, signals in results.items():
+                message_text += f"**{pair}**\n"
+
+                for signal in signals:
+                    direction = "🟢 LONG" if signal.get("direction") == "long" else "🔴 SHORT"
+                    price_level = signal.get("price_level", 0)
+                    volume = signal.get("volume", 0)
+                    distance_percent = signal.get("distance_percent", 0)
+
+                    message_text += (
+                        f"{direction}: уровень ${price_level:.2f} с объемом ${volume:,.0f} "
+                        f"({distance_percent:.2f}% от текущей цены)\n"
+                    )
+
+                message_text += "\n"
+        else:
+            message_text = "📈 Анализ зон ликвидности:\n\nНе обнаружено значительных зон ликвидности."
+
+        # Закрываем соединения
+        await data_manager.close()
+
+        # Отправляем результаты
+        from .main_menu import get_crypto_analysis_menu
+        await message.answer(message_text, reply_markup=get_crypto_analysis_menu())
+
     except Exception as e:
-        log_exception(e, f"Ошибка в обработчике мониторинга для пользователя {callback.from_user.id}")
-        try:
-            await callback.message.edit_text(
-                f"❌ Произошла ошибка при управлении мониторингом: {e}",
-                reply_markup=get_crypto_keyboard()
-            )
-        except Exception as e2:
-            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+        log_exception(e, "Ошибка при анализе ликвидности")
+        from .main_menu import get_crypto_analysis_menu
+        await message.answer(
+            f"❌ Произошла ошибка при анализе ликвидности: {e}",
+            reply_markup=get_crypto_analysis_menu()
+        )
 
-@crypto_router.callback_query(F.data == "crypto_toggle_monitoring_task")
-async def process_toggle_monitoring(callback: types.CallbackQuery):
-    """Обработчик кнопки включения/выключения мониторинга"""
-    logger.info(f"Пользователь {callback.from_user.id} переключает статус мониторинга")
-    
-    global monitoring_task, data_manager, analyzer, signal_dispatcher
-    
-    # Проверяем, запущен ли мониторинг
-    is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
-    
-    if is_monitoring_active:
-        # Останавливаем мониторинг
-        monitoring_task.cancel()
-        await callback.message.edit_text("Мониторинг остановлен")
-        logger.info("Мониторинг остановлен")
-    else:
-        # Инициализируем компоненты, если необходимо
-        if not data_manager:
-            data_manager = DataSourceManager()
-            await data_manager.initialize()
-        
-        if not analyzer:
-            analyzer = SmartMoneyAnalyzer(data_manager)
-        
-        if not signal_dispatcher:
-            signal_dispatcher = SignalDispatcher()
-            # Получаем экземпляр бота из глобальной переменной
-            signal_dispatcher.set_bot(bot_instance)
-        
-        # Запускаем мониторинг
-        monitoring_task = asyncio.create_task(run_monitoring(analyzer, signal_dispatcher))
-        await callback.message.edit_text("Мониторинг запущен")
-        logger.info("Мониторинг запущен")
-    
-    # Обновляем сообщение
-    await process_crypto_monitoring(callback)
 
+# --- Обработчики для меню торговых пар (вызываются из main_menu.py) ---
+
+# Обработчик кнопки "➕ Добавить пару"
+@crypto_router.message(F.text == "➕ Добавить пару")
+async def add_crypto_pair(message: types.Message):
+    logger.info(f"Пользователь {message.from_user.id} выбрал 'Добавить пару'")
+    user_states[message.from_user.id] = {'state': 'waiting_pair_name'}
+    await message.answer("Введите название торговой пары для добавления (например, BTCUSDT):")
+
+# Обработчик кнопки "➖ Удалить пару"
+@crypto_router.message(F.text == "➖ Удалить пару")
+async def remove_crypto_pair(message: types.Message):
+    logger.info(f"Пользователь {message.from_user.id} выбрал 'Удалить пару'")
+    pairs = crypto_config.get('monitoring', {}).get('pairs', [])
+    if not pairs:
+        await message.answer("Список отслеживаемых пар пуст.")
+        return
+
+    user_states[message.from_user.id] = {'state': 'waiting_pair_to_remove'}
+    await message.answer(
+        f"Введите название торговой пары для удаления из списка:\n\nТекущие пары: {', '.join(pairs)}"
+    )
+
+# Обработчик выбора конкретной пары из меню торговых пар
+@crypto_router.message(lambda message: message.text.endswith('USDT') and message.text in crypto_config.get('monitoring', {}).get('pairs', []))
+async def view_crypto_pair_details(message: types.Message):
+    pair = message.text.strip().upper()
+    logger.info(f"Пользователь {message.from_user.id} выбрал пару для просмотра: {pair}")
+
+    # Здесь можно добавить логику для отображения деталей по выбранной паре
+    # Например, показать последние сигналы, текущую цену, графики и т.д.
+    await message.answer(f"Информация по паре {pair} (в разработке).")
+
+
+# --- Обработчики для меню настроек крипто (вызываются из main_menu.py) ---
+
+# Обработчик callback-запроса для открытия меню настроек крипто
 @crypto_router.callback_query(F.data == "crypto_settings")
 async def process_crypto_settings(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Настройки'"""
-    logger.info(f"Пользователь {callback.from_user.id} открыл настройки криптовалютного модуля")
-    logger.debug(f"callback: {callback}")
-    logger.debug(f"callback.message: {callback.message}")
-    logger.debug(f"callback.bot: {callback.bot}")
-    
-    try:
-        keyboard = get_crypto_settings_keyboard()
-        logger.debug(f"Создана клавиатура настроек: {keyboard}")
-        
-        logger.debug("Отправляем сообщение с настройками")
-        await callback.message.edit_text(
-            "⚙️ Настройки криптовалютного модуля\n\n"
-            "Здесь вы можете настроить параметры мониторинга и анализа.",
-            reply_markup=keyboard
-        )
-        logger.debug("Сообщение с настройками успешно отправлено")
-    except Exception as e:
-        log_exception(e, f"Ошибка в обработчике настроек для пользователя {callback.from_user.id}")
-        try:
-            await callback.message.edit_text(
-                f"❌ Произошла ошибка при открытии настроек: {e}",
-                reply_markup=get_crypto_keyboard()
-            )
-        except Exception as e2:
-            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+    logger.info(f"Пользователь {callback.from_user.id} открыл настройки крипто")
+    # Проверяем права администратора, если нужно
+    # from handlers import ADMIN_ID
+    # if callback.from_user.id != ADMIN_ID:
+    #     await callback.answer("Эта функция доступна только администратору.")
+    #     return
 
-@crypto_router.callback_query(F.data == "crypto_help")
-async def process_crypto_help(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Помощь'"""
-    logger.info(f"Пользователь {callback.from_user.id} запросил помощь по криптовалютному модулю")
-    
-    help_text = (
-        "ℹ️ Помощь по криптовалютному модулю\n\n"
-        "Этот модуль позволяет отслеживать активность крупных игроков (Smart Money) "
-        "на криптовалютном рынке и получать сигналы о потенциальных движениях цены.\n\n"
-        
-        "📊 **Анализ рынка** - выполняет одноразовый анализ выбранных торговых пар "
-        "и показывает результаты.\n\n"
-        
-        "🔍 **Мониторинг** - запускает постоянное отслеживание рынка и отправляет "
-        "уведомления при обнаружении сигналов.\n\n"
-        
-        "⚙️ **Настройки** - позволяет настроить параметры мониторинга, выбрать "
-        "торговые пары и указать API ключи.\n\n"
-        
-        "Отслеживаемые метрики:\n"
-        "- Всплески объемов торгов\n"
-        "- Изменения Open Interest\n"
-        "- Funding Rate\n"
-        "- Транзакции китов\n"
-        "- Зоны ликвидности\n"
-        "- Order Blocks\n\n"
-        
-        "Команды:\n"
-        "/crypto - открыть меню криптовалютного модуля\n"
-        "/crypto_analyze - выполнить анализ рынка\n"
-        "/crypto_start - запустить мониторинг\n"
-        "/crypto_stop - остановить мониторинг"
-    )
-    
     await callback.message.edit_text(
-        help_text,
-        reply_markup=get_crypto_keyboard()
+        "⚙️ Настройки криптовалютного модуля\n\n"
+        "Здесь вы можете настроить параметры мониторинга и анализа.",
+        reply_markup=get_crypto_settings_keyboard()
     )
+    await callback.answer()
 
-@crypto_router.callback_query(F.data == "crypto_back_to_main")
-async def process_back_to_main(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Назад' в подменю"""
-    logger.info(f"Пользователь {callback.from_user.id} вернулся в главное меню криптовалютного модуля")
-    
+# Обработчик callback-запроса для настройки API ключей
+@crypto_router.callback_query(F.data == "crypto_settings_api_keys")
+async def process_settings_api_keys(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку API ключей")
     await callback.message.edit_text(
-        "🚀 Криптовалютный анализатор Smart Money\n\n"
-        "Этот модуль позволяет отслеживать активность крупных игроков (Smart Money) "
-        "на криптовалютном рынке и получать сигналы о потенциальных движениях цены.\n\n"
-        "Выберите действие:",
-        reply_markup=get_crypto_keyboard()
+        "🔑 Настройка API ключей\n\n"
+        "Выберите биржу, для которой хотите настроить API ключ:",
+        reply_markup=get_api_key_settings_keyboard()
     )
+    await callback.answer()
 
-@crypto_router.callback_query(F.data == "crypto_back_to_settings")
-async def process_back_to_settings(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Назад' в настройках"""
-    logger.info(f"Пользователь {callback.from_user.id} вернулся в меню настроек")
-    
-    await process_crypto_settings(callback)
+# Обработчик callback-запроса для выбора типа API ключа (например, Binance)
+@crypto_router.callback_query(F.data.startswith("crypto_settings_api_"))
+async def process_settings_select_api_type(callback: types.CallbackQuery):
+    api_type = callback.data.split("_")[-1]
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку API ключа для {api_type}")
 
-@crypto_router.callback_query(F.data == "crypto_pairs")
-async def process_crypto_pairs(callback: types.CallbackQuery):
-    """Обработчик кнопки 'Торговые пары'"""
-    logger.info(f"Пользователь {callback.from_user.id} открыл настройки торговых пар")
-    
-    # Получаем текущие пары
+    user_states[callback.from_user.id] = {'state': 'waiting_api_key', 'api_type': api_type}
+
+    await callback.message.edit_text(
+        f"🔑 Введите ваш API ключ для {api_type.capitalize()}.\n\n"
+        "⚠️ **Внимание:** Для вашей безопасности, сообщение с ключом будет удалено после ввода.\n"
+        "Пожалуйста, убедитесь, что вы копируете ключ правильно."
+    )
+    await callback.answer()
+
+# Обработчик callback-запроса для настройки торговых пар
+@crypto_router.callback_query(F.data == "crypto_settings_pairs")
+async def process_settings_pairs(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку торговых пар")
+    # Импортируем функцию получения меню пар из main_menu.py
+    from .main_menu import get_crypto_pairs_menu
+
     pairs = crypto_config.get('monitoring', {}).get('pairs', ['BTCUSDT', 'ETHUSDT'])
-    
+
     await callback.message.edit_text(
-        "🔢 Настройка торговых пар\n\n"
+        "📈 Управление торговыми парами\n\n"
         f"Текущие пары: {', '.join(pairs)}\n\n"
-        "Выберите пару для удаления или добавьте новую:",
-        reply_markup=get_crypto_pairs_keyboard()
+        "Выберите пару для просмотра или действие:",
+        reply_markup=get_crypto_pairs_menu() # Используем клавиатуру из main_menu.py
     )
+    await callback.answer()
 
-# Функция для запуска мониторинга
-async def run_monitoring(analyzer, signal_dispatcher, interval=300):
-    """
-    Запускает мониторинг рынка с периодическим анализом
-    
-    Args:
-        analyzer (SmartMoneyAnalyzer): Анализатор Smart Money
-        signal_dispatcher (SignalDispatcher): Диспетчер сигналов
-        interval (int): Интервал между проверками в секундах
-    """
-    logger.info(f"Запущен мониторинг с интервалом {interval} секунд")
-    
-    try:
-        while True:
+# Обработчик callback-запроса для настройки сигналов
+@crypto_router.callback_query(F.data == "crypto_settings_signals")
+async def process_settings_signals(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку сигналов")
+    await callback.message.edit_text(
+        "🔔 Настройка сигналов\n\n"
+        "Управляйте параметрами уведомлений о сигналах.",
+        reply_markup=get_signal_settings_keyboard()
+    )
+    await callback.answer()
+
+# Обработчик callback-запроса для переключения статуса сигналов
+@crypto_router.callback_query(F.data == "crypto_settings_signals_toggle")
+async def process_settings_signals_toggle(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} переключил статус сигналов")
+    signals_config = crypto_config.get('signals', {})
+    signals_enabled = signals_config.get('enabled', True)
+    signals_config['enabled'] = not signals_enabled
+    crypto_config['signals'] = signals_config
+    save_crypto_config()
+
+    await callback.message.edit_text(
+        "🔔 Настройка сигналов\n\n"
+        "Управляйте параметрами уведомлений о сигналах.",
+        reply_markup=get_signal_settings_keyboard() # Обновляем клавиатуру
+    )
+    await callback.answer("Статус сигналов обновлен.")
+
+# Обработчик callback-запроса для настройки канала сигналов
+@crypto_router.callback_query(F.data == "crypto_settings_signals_channel")
+async def process_settings_signals_channel(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку канала сигналов")
+    user_states[callback.from_user.id] = {'state': 'waiting_signal_channel'}
+    await callback.message.edit_text(
+        "🔔 Введите ID канала или @username для отправки сигналов.\n\n"
+        "Убедитесь, что бот является администратором канала и имеет право отправлять сообщения."
+    )
+    await callback.answer()
+
+# Обработчик callback-запроса для переключения графиков в сигналах
+@crypto_router.callback_query(F.data == "crypto_settings_signals_charts_toggle")
+async def process_settings_signals_charts_toggle(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} переключил графики в сигналах")
+    signals_config = crypto_config.get('signals', {})
+    include_charts = signals_config.get('include_charts', True)
+    signals_config['include_charts'] = not include_charts
+    crypto_config['signals'] = signals_config
+    save_crypto_config()
+
+    await callback.message.edit_text(
+        "🔔 Настройка сигналов\n\n"
+        "Управляйте параметрами уведомлений о сигналах.",
+        reply_markup=get_signal_settings_keyboard() # Обновляем клавиатуру
+    )
+    await callback.answer("Настройка графиков обновлена.")
+
+# Обработчик callback-запроса для настройки кулдауна сигналов
+@crypto_router.callback_query(F.data == "crypto_settings_signals_cooldown")
+async def process_settings_signals_cooldown(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} выбрал настройку кулдауна сигналов")
+    user_states[callback.from_user.id] = {'state': 'waiting_signal_cooldown'}
+    current_cooldown = crypto_config.get('signals', {}).get('notification_cooldown', 3600)
+    await callback.message.edit_text(
+        f"🔔 Введите время кулдауна между уведомлениями в секундах (текущее: {current_cooldown} сек).\n\n"
+        "Например, 3600 для 1 часа."
+    )
+    await callback.answer()
+
+
+# Обработчик callback-запроса для возврата из настроек крипто
+@crypto_router.callback_query(F.data == "crypto_settings_back")
+async def process_settings_back(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} вернулся из настроек крипто")
+    # Импортируем функцию получения крипто меню из main_menu.py
+    from .main_menu import get_crypto_main_menu
+
+    await callback.message.edit_text(
+        "🚀 Криптовалютный анализатор Smart Money\n\nВыберите действие:",
+        reply_markup=get_crypto_main_menu()
+    )
+    await callback.answer()
+
+
+# --- Обработчик ввода пользователя (для состояний) ---
+
+# Этот обработчик будет ловить текстовые сообщения, когда пользователь находится в состоянии ожидания ввода
+@crypto_router.message()
+async def process_user_input(message: types.Message):
+    """Обработчик ввода пользователя"""
+    # Проверяем, находится ли пользователь в каком-либо состоянии ожидания
+    global user_states
+
+    user_state = user_states.get(message.from_user.id)
+    if not user_state:
+        # Если пользователь не в состоянии ожидания, игнорируем сообщение
+        return
+
+    state = user_state.get('state')
+
+    if state == 'waiting_api_key':
+        # Обработка ввода API ключа
+        api_type = user_state.get('api_type')
+        logger.info(f"Получен API ключ от пользователя {message.from_user.id} для {api_type}")
+
+        try:
+            # Удаляем сообщение с API ключом для безопасности
+            await message.delete()
+
+            # Получаем API ключ из сообщения
+            api_key = message.text.strip()
+
+            # Обновляем конфигурацию
+            if 'api_keys' not in crypto_config:
+                crypto_config['api_keys'] = {}
+
+            crypto_config['api_keys'][api_type] = api_key
+
+            # Сохраняем конфигурацию в файл
+            save_crypto_config()
+
+            logger.debug(f"API ключ для {api_type} сохранен в конфигурации")
+
+            # Сбрасываем состояние пользователя
+            del user_states[message.from_user.id]
+
+            # Отправляем сообщение об успешном сохранении
+            await message.answer(
+                f"✅ API ключ для {api_type.capitalize()} успешно сохранен.\n\n"
+                "Возвращаемся к настройкам API ключей."
+            )
+
+            # Создаем временное сообщение для использования в callback
+            temp_msg = await message.answer("⏳ Загрузка настроек API ключей...")
+
+            # Создаем callback-запрос для использования существующего обработчика
+            # Возвращаемся в меню выбора типа API ключа
+            callback = types.CallbackQuery(
+                id="crypto_settings_api_keys", # Используем callback_data для возврата в меню выбора типа
+                from_user=message.from_user,
+                chat_instance=str(message.chat.id),
+                message=temp_msg,
+                data="crypto_settings_api_keys"
+            )
+
+            # Устанавливаем бота для callback
+            callback.bot = bot_instance
+
+            # Вызываем обработчик настроек API ключей
+            await process_settings_api_keys(callback)
+
+        except Exception as e:
+            log_exception(e, f"Ошибка при сохранении API ключа для {api_type} пользователя {message.from_user.id}")
             try:
-                # Выполняем анализ
-                results = await analyzer.run_analysis()
-                
-                # Отправляем сигналы
-                sent_count = await signal_dispatcher.dispatch_signals(results)
-                
-                if sent_count > 0:
-                    logger.info(f"Отправлено {sent_count} сигналов")
-                else:
-                    logger.info("Сигналов не обнаружено")
-                
-                # Ждем до следующей проверки
-                await asyncio.sleep(interval)
-            except asyncio.CancelledError:
-                logger.info("Мониторинг отменен")
-                break
-            except Exception as e:
-                logger.error(f"Ошибка при выполнении мониторинга: {e}")
-                # Ждем перед повторной попыткой
-                await asyncio.sleep(60)
-    finally:
-        logger.info("Мониторинг остановлен")
+                await message.answer(
+                    f"❌ Произошла ошибка при сохранении API ключа: {e}\n\n"
+                    "Пожалуйста, попробуйте еще раз или вернитесь в настройки."
+                )
+            except Exception as e2:
+                log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
-# Дополнительные обработчики команд
-@crypto_router.message(Command("crypto_analyze"))
-async def cmd_crypto_analyze(message: types.Message):
-    """Обработчик команды /crypto_analyze"""
-    logger.info(f"Пользователь {message.from_user.id} запустил команду /crypto_analyze")
-    
-    # Создаем сообщение
-    msg = await message.answer("⏳ Запуск анализа рынка...")
-    
-    # Создаем callback-запрос для использования существующего обработчика
-    callback = types.CallbackQuery(
-        id="crypto_analyze",
-        from_user=message.from_user,
-        chat_instance=str(message.chat.id),
-        message=msg,
-        data="crypto_analyze"
-    )
-    
-    # Устанавливаем бота для callback
-    callback.bot = bot_instance
-    
-    # Вызываем обработчик
-    await process_crypto_analyze(callback)
+    elif state == 'waiting_pair_name':
+        # Обработка ввода названия торговой пары для добавления
+        logger.info(f"Получено название торговой пары от пользователя {message.from_user.id}: {message.text}")
 
-@crypto_router.message(Command("crypto_start"))
-async def cmd_crypto_start(message: types.Message):
-    """Обработчик команды /crypto_start"""
-    logger.info(f"Пользователь {message.from_user.id} запустил команду /crypto_start")
-    
-    global monitoring_task, data_manager, analyzer, signal_dispatcher
-    
-    # Проверяем, запущен ли мониторинг
-    is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
-    
-    if is_monitoring_active:
-        await message.answer("⚠️ Мониторинг уже запущен")
-        return
-    
-    # Инициализируем компоненты, если необходимо
-    if not data_manager:
-        data_manager = DataSourceManager()
-        await data_manager.initialize()
-    
-    if not analyzer:
-        analyzer = SmartMoneyAnalyzer(data_manager)
-    
-    if not signal_dispatcher:
-        signal_dispatcher = SignalDispatcher()
-        signal_dispatcher.set_bot(bot_instance)
-    
-    # Запускаем мониторинг
-    monitoring_task = asyncio.create_task(run_monitoring(analyzer, signal_dispatcher))
-    
-    await message.answer("✅ Мониторинг запущен")
-    logger.info("Мониторинг запущен через команду /crypto_start")
+        try:
+            # Получаем название пары из сообщения
+            pair = message.text.strip().upper()
 
-@crypto_router.message(Command("crypto_stop"))
-async def cmd_crypto_stop(message: types.Message):
-    """Обработчик команды /crypto_stop"""
-    logger.info(f"Пользователь {message.from_user.id} запустил команду /crypto_stop")
-    
-    global monitoring_task
-    
-    # Проверяем, запущен ли мониторинг
-    is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
-    
-    if not is_monitoring_active:
-        await message.answer("⚠️ Мониторинг не запущен")
-        return
-    
-    # Останавливаем мониторинг
-    monitoring_task.cancel()
-    
-    await message.answer("✅ Мониторинг остановлен")
-    logger.info("Мониторинг остановлен через команду /crypto_stop")
+            # Проверяем формат пары (должна заканчиваться на USDT)
+            if not pair.endswith('USDT'):
+                await message.answer(
+                    "⚠️ Название пары должно заканчиваться на USDT (например, BTCUSDT).\n"
+                    "Пожалуйста, введите корректное название пары."
+                )
+                return
 
-# Функция для регистрации обработчиков
-def register_crypto_handlers(dp):
-    """Регистрация обработчиков команд криптовалютного модуля"""
-    logger.info("Регистрация обработчиков команд криптовалютного модуля")
-    
-    try:
-        # Получаем экземпляр бота из глобальной переменной в handlers.py
-        from handlers import bot_instance
-        logger.debug(f"Получен bot_instance из handlers: {bot_instance}")
-        
-        # Устанавливаем экземпляр бота
-        set_bot(bot_instance)
-        logger.debug(f"Установлен глобальный bot_instance: {bot_instance}")
-        
-        # Регистрируем роутер
-        dp.include_router(crypto_router)
-        logger.info("Роутер crypto_router успешно зарегистрирован")
-    except Exception as e:
-        log_exception(e, "Ошибка при регистрации обработчиков криптовалютного модуля")
+            # Получаем текущие пары
+            monitoring_config = crypto_config.get('monitoring', {})
+            pairs = monitoring_config.get('pairs', []) # Инициализируем пустым списком, если нет
+
+            # Проверяем, не добавлена ли уже эта пара
+            if pair in pairs:
+                await message.answer(
+                    f"⚠️ Пара {pair} уже добавлена в список отслеживаемых пар."
+                )
+                return
+
+            # Добавляем новую пару
+            pairs.append(pair)
+            monitoring_config['pairs'] = pairs
+            crypto_config['monitoring'] = monitoring_config
+
+            # Сохраняем конфигурацию в файл
+            save_crypto_config()
+
+            logger.debug(f"Добавлена новая торговая пара {pair}, текущие пары: {pairs}")
+
+            # Сбрасываем состояние пользователя
+            del user_states[message.from_user.id]
+
+            # Отправляем сообщение об успешном добавлении
+            await message.answer(
+                f"✅ Торговая пара {pair} успешно добавлена.\n\n"
+                "Возвращаемся к настройкам торговых пар."
+            )
+
+            # Создаем временное сообщение для использования в callback
+            temp_msg = await message.answer("⏳ Загрузка настроек торговых пар...")
+
+            # Создаем callback-запрос для использования существующего обработчика
+            # Возвращаемся в меню торговых пар
+            callback = types.CallbackQuery(
+                id="crypto_settings_pairs", # Используем callback_data для возврата в меню пар
+                from_user=message.from_user,
+                chat_instance=str(message.chat.id),
+                message=temp_msg,
+                data="crypto_settings_pairs"
+            )
+
+            # Устанавливаем бота для callback
+            callback.bot = bot_instance
+
+            # Вызываем обработчик настроек торговых пар
+            await process_settings_pairs(callback)
+
+        except Exception as e:
+            log_exception(e, f"Ошибка при добавлении торговой пары для пользователя {message.from_user.id}")
+            try:
+                await message.answer(
+                    f"❌ Произошла ошибка при добавлении торговой пары: {e}\n\n"
+                    "Пожалуйста, попробуйте еще раз или вернитесь в настройки."
+                )
+            except Exception as e2:
+                log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+
+    elif state == 'waiting_pair_to_remove':
+        # Обработка ввода названия торговой пары для удаления
+        logger.info(f"Получено название торговой пары для удаления от пользователя {message.from_user.id}: {message.text}")
+
+        try:
+            # Получаем название пары из сообщения
+            pair_to_remove = message.text.strip().upper()
+
+            # Получаем текущие пары
+            monitoring_config = crypto_config.get('monitoring', {})
+            pairs = monitoring_config.get('pairs', [])
+
+            # Проверяем, существует ли такая пара в списке
+            if pair_to_remove not in pairs:
+                await message.answer(
+                    f"⚠️ Пара {pair_to_remove} не найдена в списке отслеживаемых пар.\n"
+                    "Пожалуйста, введите корректное название пары для удаления."
+                )
+                return
+
+            # Удаляем пару
+            pairs.remove(pair_to_remove)
+            monitoring_config['pairs'] = pairs
+            crypto_config['monitoring'] = monitoring_config
+
+            # Сохраняем конфигурацию в файл
+            save_crypto_config()
+
+            logger.debug(f"Удалена торговая пара {pair_to_remove}, текущие пары: {pairs}")
+
+            # Сбрасываем состояние пользователя
+            del user_states[message.from_user.id]
+
+            # Отправляем сообщение об успешном удалении
+            await message.answer(
+                f"✅ Торговая пара {pair_to_remove} успешно удалена.\n\n"
+                "Возвращаемся к настройкам торговых пар."
+            )
+
+            # Создаем временное сообщение для использования в callback
+            temp_msg = await message.answer("⏳ Загрузка настроек торговых пар...")
+
+            # Создаем callback-запрос для использования существующего обработчика
+            # Возвращаемся в меню торговых пар
+            callback = types.CallbackQuery(
+                id="crypto_settings_pairs", # Используем callback_data для возврата в меню пар
+                from_user=message.from_user,
+                chat_instance=str(message.chat.id),
+                message=temp_msg,
+                data="crypto_settings_pairs"
+            )
+
+            # Устанавливаем бота для callback
+            callback.bot = bot_instance
+
+            # Вызываем обработчик настроек торговых пар
+            await process_settings_pairs(callback)
+
+        except Exception as e:
+            log_exception(e, f"Ошибка при удалении торговой пары для пользователя {message.from_user.id}")
+            try:
+                await message.answer(
+                    f"❌ Произошла ошибка при удалении торговой пары: {e}\n\n"
+                    "Пожалуйста, попробуйте еще раз или вернитесь в настройки."
+                )
+            except Exception as e2:
+                log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+
+    elif state == 'waiting_signal_channel':
+        # Обработка ввода ID канала для сигналов
+        logger.info(f"Получен ID канала для сигналов от пользователя {message.from_user.id}: {message.text}")
+
+        try:
+            channel_id = message.text.strip()
+
+            # Простая валидация: должен начинаться с @ или быть числом
+            if not (channel_id.startswith('@') or channel_id.lstrip('-').isdigit()):
+                 await message.answer(
+                    "⚠️ Некорректный формат ID канала. Введите @username или числовой ID."
+                )
+                 return
+
+            signals_config = crypto_config.get('signals', {})
+            signals_config['channel_id'] = channel_id
