@@ -1,5 +1,7 @@
 """
-Пакет для работы с конфигурацией криптомодуля
+Пакет для работы с конфигурацией
 """
 
-from .config import load_config, get_config, get_cryptorank_api_key, get_whitelist_pairs
+from .config import get_config, get_cryptorank_api_key
+
+__all__ = ['get_config', 'get_cryptorank_api_key']

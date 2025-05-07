@@ -65,6 +65,12 @@ async def main():
     signal_dispatcher = SignalDispatcher()
     signal_dispatcher.set_bot(bot)
     
+    # Инициализируем сервис уведомлений
+    from crypto.notification.alert_service import AlertService
+    alert_service = AlertService()
+    alert_service.set_bot(bot)
+    asyncio.create_task(alert_service.start_monitoring())
+    
     # Запуск бота
     logger = logging.getLogger(__name__)
     logger.info("Запуск бота...")
