@@ -280,6 +280,9 @@ class WhaleAlertDataSource(CryptoDataSource):
         result = await self._make_request(url, params=params)
         if result and "transactions" in result:
             return result["transactions"]
+        return []esult = await self._make_request(url, params=params)
+        if result and "transactions" in result:
+            return result["transactions"]
         return []
 
 
