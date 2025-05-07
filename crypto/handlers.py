@@ -159,6 +159,9 @@ async def show_smart_money_signals(callback: CallbackQuery):
         # Ограничиваем количество сигналов для отображения
         signals_to_show = signals[:5]  # Показываем только топ-5 сигналов
         
+        # Импортируем ChartHelper для создания ссылок на TradingView
+        from .utils.chart_helper import ChartHelper
+        
         # Формируем сообщение
         message_text = "🔍 *Сигналы Smart Money - Всплески объема*\n\n"
         
@@ -176,9 +179,32 @@ async def show_smart_money_signals(callback: CallbackQuery):
         
         # Создаем клавиатуру
         builder = InlineKeyboardBuilder()
+        
+        # Добавляем кнопки для каждого сигнала с ссылкой на TradingView
+        for i, signal in enumerate(signals_to_show):
+            # Получаем символ из пары (например, BTC/USDT -> BTC)
+            symbol = signal.pair.split('/')[0]
+            
+            # Создаем URL для TradingView с разными таймфреймами
+            tv_url_1d = ChartHelper.get_tradingview_chart_url(symbol, "1D")
+            tv_url_4h = ChartHelper.get_tradingview_chart_url(symbol, "4h")
+            
+            # Добавляем кнопки для каждого таймфрейма
+            builder.button(
+                text=f"📊 {symbol} (1D)", 
+                url=tv_url_1d
+            )
+            builder.button(
+                text=f"📊 {symbol} (4H)", 
+                url=tv_url_4h
+            )
+        
+        # Добавляем стандартные кнопки
         builder.button(text="🔄 Обновить сигналы", callback_data="crypto_smart_money")
         builder.button(text="🔙 Вернуться в меню", callback_data="crypto_back_to_main")
-        builder.adjust(1)
+        
+        # Настраиваем расположение кнопок: по 2 в ряд для графиков, по 1 для остальных
+        builder.adjust(2, 2, 2, 2, 2, 1, 1)
         
         # Отправляем сообщение
         await callback.message.edit_text(
