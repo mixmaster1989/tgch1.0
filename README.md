@@ -1,66 +1,113 @@
-# TGE-MVP: Telegram Growth Engine
+# Telegram Channel Helper
 
-Раскрутка Telegram-канала под ключ:
-- Рефералка
-- Планировщик постов
-- Телеметрия и рост
+Бот для раскрутки Telegram-каналов с функциями генерации контента, инвайтинга и анализа криптовалютного рынка.
 
-## Установка
-```bash
-pip install -r requirements.txt
-cp .env.example .env
+## Функциональность
 
-hyperbooster/
-├── ai_engine/           # Генерация постов, CTA, ответов
-│   ├── __init__.py      # Инициализация модуля
-│   ├── post_generator.py# Генерация контента
-│   ├── cta_generator.py # Генерация Call To Action (CTA)
-│   └── response_bot.py  # AI-ответчик
-├── scrapers/            # Парсеры трендовых тем
-│   ├── __init__.py
-│   ├── telegram_scraper.py # Парсинг Telegram-каналов
-│   └── trend_scraper.py    # Парсинг трендов
-├── telegram_bot/        # Интерфейс взаимодействия через Telegram
-│   ├── __init__.py
-│   ├── bot.py           # Основной файл с Telegram-ботом
-│   └── handlers.py      # Обработчики команд
-├── content_templates/   # Готовые шаблоны контента
-│   ├── __init__.py
-│   ├── post_templates.py  # Примеры шаблонов для постов
-│   └── cta_templates.py   # Примеры шаблонов для CTA
-├── data/                # Данные пользователя / кэши
-│   ├── __init__.py
-│   └── user_data.json    # Хранение данных и кэширования
-├── core/                # Логика, планировщик, аналитика
-│   ├── __init__.py
-│   ├── scheduler.py      # Планировщик задач
-│   ├── analytics.py      # Сбор и обработка аналитики
-│   └── utils.py          # Утилиты для работы с данными
-├── requirements.txt     # Зависимости
-└── README.md            # Описание проекта
+### Основные возможности
+- Генерация постов с использованием ИИ
+- Публикация постов в канал
+- Инвайтинг пользователей
+- Комментирование в других каналах
 
-# HyperBooster: Telegram Channel Growth Booster
-
-**HyperBooster** — это инструмент для автоматизированной раскрутки Telegram-каналов с использованием AI. Он предоставляет пользователям всё необходимое для быстрого роста их каналов — от генерации контента до аналитики и автоматических рекомендаций.
-
-## Что делает HyperBooster?
-- **Генерация контента**: Автоматическая генерация постов и CTA с использованием ИИ.
-- **Ответы подписчикам**: AI-автоответчик для вовлечения подписчиков.
-- **Аналитика**: Подсказки по времени постинга, улучшения контента и мониторинг результатов.
-- **Парсинг трендов**: Извлечение популярных тем для повышения вовлеченности.
-  
-## Структура репозитория
-
-- `ai_engine/`: Модуль генерации контента и ответов.
-- `scrapers/`: Парсеры для поиска актуальных трендов и каналов.
-- `telegram_bot/`: Бот для взаимодействия через Telegram.
-- `content_templates/`: Шаблоны для контента и CTA.
-- `data/`: Хранение данных и кэш.
-- `core/`: Логика, планировщик задач и аналитика.
+### Криптовалютный анализ (Smart Money)
+- Мониторинг действий крупных игроков
+- Отслеживание всплесков объемов
+- Анализ Open Interest и Funding Rate
+- Обнаружение зон ликвидности и Order Blocks
+- Отправка сигналов в Telegram
 
 ## Установка
 
 1. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/username/hyperbooster.git
-   cd hyperbooster
+```bash
+git clone https://github.com/yourusername/tgch1.0.git
+cd tgch1.0
+```
+
+2. Создайте виртуальное окружение и активируйте его:
+```bash
+python -m venv tgch_env
+source tgch_env/bin/activate  # для Linux/Mac
+tgch_env\Scripts\activate     # для Windows
+```
+
+3. Установите зависимости:
+```bash
+pip install -r requirements.txt
+```
+
+4. Создайте файл `.env` с токеном бота:
+```
+BOT_TOKEN=your_bot_token_here
+```
+
+5. Настройте конфигурацию в файлах:
+   - `config/config.yaml` - основная конфигурация
+   - `config/crypto_config.yaml` - настройки криптовалютного модуля
+
+## Использование
+
+### Запуск бота
+```bash
+python main.py
+```
+
+### Основные команды
+- `/start` - начать работу с ботом
+- `/help` - показать справку
+- `/generate` - сгенерировать пост
+- `/publish` - опубликовать пост в канал
+- `/promotion` - меню продвижения канала
+- `/crypto` - меню криптовалютного анализа
+
+### Команды криптовалютного модуля
+- `/crypto_analyze` - выполнить анализ рынка
+- `/crypto_start` - запустить мониторинг
+- `/crypto_stop` - остановить мониторинг
+
+## Структура проекта
+
+```
+tgch1.0/
+├── config/
+│   ├── config.yaml
+│   └── crypto_config.yaml
+├── core/
+│   ├── generator.py
+│   ├── inviting.py
+│   ├── commenting.py
+│   ├── referral.py
+│   ├── scheduler.py
+│   └── telemetry.py
+├── crypto/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── data_sources.py
+│   ├── smart_money_analyzer.py
+│   ├── signal_dispatcher.py
+│   └── telegram_interface.py
+├── data/
+│   └── charts/
+├── handlers.py
+├── handlers_promotion.py
+├── main.py
+├── requirements.txt
+└── README.md
+```
+
+## Настройка API ключей
+
+Для работы криптовалютного модуля необходимо настроить API ключи в файле `config/crypto_config.yaml`:
+
+```yaml
+api_keys:
+  tradingview: 'your_tradingview_api_key'
+  cryptorank: 'your_cryptorank_api_key'
+  whale_alert: 'your_whale_alert_api_key'
+  binance: 'your_binance_api_key'
+```
+
+## Лицензия
+
+MIT

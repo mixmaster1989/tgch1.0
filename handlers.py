@@ -56,6 +56,7 @@ def get_main_keyboard(is_admin=False):
     if is_admin:
         keyboard.insert(1, [KeyboardButton(text="📢 Опубликовать в канал")])
         keyboard.append([KeyboardButton(text="🚀 Продвижение")])
+        keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
         keyboard.append([KeyboardButton(text="⚙️ Настройки")])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -359,6 +360,19 @@ async def text_promotion(message: types.Message):
     # Вызываем команду /promotion
     from handlers_promotion import cmd_promotion
     await cmd_promotion(message)
+
+@router.message(F.text == "📈 Крипто анализ")
+async def text_crypto(message: types.Message):
+    logger.info(f"Пользователь {message.from_user.id} нажал кнопку 'Крипто анализ'")
+    # Проверяем, что команду отправил администратор
+    if message.from_user.id != ADMIN_ID:
+        logger.warning(f"Пользователь {message.from_user.id} попытался использовать функцию 'Крипто анализ' без прав администратора")
+        await message.answer("Эта функция доступна только администратору.")
+        return
+    
+    # Вызываем команду /crypto
+    from crypto.telegram_interface import cmd_crypto
+    await cmd_crypto(message)
 
 # Обработчики callback-запросов
 @router.callback_query(F.data.startswith("type_"))
