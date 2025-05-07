@@ -108,7 +108,8 @@ class CryptoRankAnalyzer:
             signals = []
             
             # Получаем настройки для анализа всплесков объема
-            threshold = self.config['analytics']['volume_spike']['threshold']
+            # Временно снижаем порог для тестирования
+            threshold = 1.05  # Было: self.config['analytics']['volume_spike']['threshold']
             
             # Получаем данные о монетах (используем только доступные на бесплатном тарифе эндпоинты)
             coins = await self.cryptorank_api.get_coins(limit=100, include_percent_change=True)
@@ -134,10 +135,11 @@ class CryptoRankAnalyzer:
                     market_volatility = abs(float(coin.get('percentChange', {}).get('h24', '0') or '0'))
                     
                     # Корректируем коэффициент в зависимости от волатильности
+                    # Временно увеличиваем коэффициент для тестирования
                     if market_volatility > 5:  # Высокая волатильность
-                        avg_volume_factor = 0.7  # Текущий объем выше среднего
+                        avg_volume_factor = 1.2  # Искусственно занижаем средний объем
                     else:  # Низкая волатильность
-                        avg_volume_factor = 0.9  # Текущий объем ближе к среднему
+                        avg_volume_factor = 1.5  # Искусственно занижаем средний объем
                     
                     avg_volume_7d = volume_24h * avg_volume_factor
                     

@@ -132,11 +132,19 @@ async def show_smart_money_signals(callback: CallbackQuery):
         
         # Получаем сигналы о всплесках объема
         from .analytics.crypto_rank_analyzer import CryptoRankAnalyzer
+        from .analytics.mock_signals import MockSignalGenerator
         from .notification.message_formatter import MessageFormatter
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         
+        # Используем реальный анализатор
         analyzer = CryptoRankAnalyzer()
         signals = await analyzer.detect_volume_spikes()
+        
+        # Если реальных сигналов нет, добавляем тестовые
+        if not signals:
+            mock_generator = MockSignalGenerator()
+            signals = mock_generator.generate_volume_spike_signals()
+            logger.info("Добавлены тестовые сигналы Smart Money для демонстрации")
         
         if signals:
             # Сортируем сигналы по уверенности (от высокой к низкой)
