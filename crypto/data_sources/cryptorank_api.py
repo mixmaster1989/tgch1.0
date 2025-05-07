@@ -35,9 +35,21 @@ class CryptorankAPI:
         
         logger.info("Инициализирован клиент API Cryptorank V2")
     
+    # Словарь для отслеживания ошибок по эндпоинтам
+    _endpoint_errors = {}
+    # Список эндпоинтов, доступных на бесплатном тарифе
+    _free_endpoints = [
+        'currencies',
+        'currencies/categories',
+        'currencies/map',
+        'currencies/tags',
+        'global',
+        'exchanges/map'
+    ]
+    
     async def _make_request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Выполняет запрос к API с учетом rate limit
+        Выполняет запрос к API с учетом rate limit и доступности эндпоинтов
         
         Args:
             endpoint: Конечная точка API
@@ -46,6 +58,14 @@ class CryptorankAPI:
         Returns:
             Dict[str, Any]: Ответ API в формате JSON
         """
+        # Проверяем, доступен ли эндпоинт на бесплатном тарифе
+        base_endpoint = endpoint.split('/')[0]
+        if base_endpoint not in self._free_endpoints and not any(endpoint.startswith(f"{e}/") for e in self._free_endpoints):
+            # Проверяем, не превышен ли лимит ошибок для этого эндпоинта
+            if endpoint in self._endpoint_errors and self._endpoint_errors[endpoint] >= 3:
+                logger.warning(f"Эндпоинт {endpoint} недоступен на бесплатном тарифе и был заблокирован после 3 ошибок")
+                raise Exception(f"Endpoint {endpoint} is not available in free plan and has been blocked")
+        
         # Проверяем rate limit
         current_time = time.time()
         if current_time - self.last_request_time > 60:
@@ -90,7 +110,22 @@ class CryptorankAPI:
                             self.credits_used = data['status']['usedCredits']
                             logger.debug(f"Использовано кредитов: {self.credits_used}")
                         
+                        # Сбрасываем счетчик ошибок для этого эндпоинта
+                        if endpoint in self._endpoint_errors:
+                            self._endpoint_errors[endpoint] = 0
+                        
                         return data
+                    elif response.status == 403:
+                        error_text = await response.text()
+                        logger.error(f"Ошибка API Cryptorank: {response.status} - {error_text}")
+                        
+                        # Увеличиваем счетчик ошибок для этого эндпоинта
+                        if endpoint not in self._endpoint_errors:
+                            self._endpoint_errors[endpoint] = 1
+                        else:
+                            self._endpoint_errors[endpoint] += 1
+                        
+                        raise Exception(f"API error: {response.status} - {error_text}")
                     else:
                         error_text = await response.text()
                         logger.error(f"Ошибка API Cryptorank: {response.status} - {error_text}")
