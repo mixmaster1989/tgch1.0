@@ -136,61 +136,57 @@ async def show_smart_money_signals(callback: CallbackQuery):
         from .notification.message_formatter import MessageFormatter
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         
-        # Используем реальный анализатор
+        # Создаем генератор тестовых сигналов
+        mock_generator = MockSignalGenerator()
+        
+        # Всегда получаем тестовые сигналы
+        test_signals = mock_generator.generate_volume_spike_signals()
+        logger.info(f"Сгенерировано {len(test_signals)} тестовых сигналов Smart Money")
+        
+        # Используем реальный анализатор для получения реальных сигналов
         analyzer = CryptoRankAnalyzer()
-        signals = await analyzer.detect_volume_spikes()
+        real_signals = await analyzer.detect_volume_spikes()
+        logger.info(f"Обнаружено {len(real_signals)} реальных сигналов Smart Money")
         
-        # Если реальных сигналов нет, добавляем тестовые
-        if not signals:
-            mock_generator = MockSignalGenerator()
-            signals = mock_generator.generate_volume_spike_signals()
-            logger.info("Добавлены тестовые сигналы Smart Money для демонстрации")
+        # Объединяем реальные и тестовые сигналы
+        signals = real_signals + test_signals
+        logger.info(f"Всего сигналов для отображения: {len(signals)}")
         
-        if signals:
-            # Сортируем сигналы по уверенности (от высокой к низкой)
-            signals.sort(key=lambda s: s.confidence, reverse=True)
+        # Сигналы всегда должны быть, так как мы добавили тестовые
+        # Сортируем сигналы по уверенности (от высокой к низкой)
+        signals.sort(key=lambda s: s.confidence, reverse=True)
+        
+        # Ограничиваем количество сигналов для отображения
+        signals_to_show = signals[:5]  # Показываем только топ-5 сигналов
+        
+        # Формируем сообщение
+        message_text = "🔍 *Сигналы Smart Money - Всплески объема*\n\n"
+        
+        for i, signal in enumerate(signals_to_show):
+            direction_emoji = "🟢" if signal.direction.value == "long" else "🔴"
+            direction_text = "LONG" if signal.direction.value == "long" else "SHORT"
             
-            # Ограничиваем количество сигналов для отображения
-            signals_to_show = signals[:5]  # Показываем только топ-5 сигналов
-            
-            # Формируем сообщение
-            message_text = "🔍 *Сигналы Smart Money - Всплески объема*\n\n"
-            
-            for i, signal in enumerate(signals_to_show):
-                direction_emoji = "🟢" if signal.direction.value == "long" else "🔴"
-                direction_text = "LONG" if signal.direction.value == "long" else "SHORT"
-                
-                message_text += (
-                    f"{i+1}. {direction_emoji} *{signal.pair}* | {direction_text} | ${signal.price:.4f}\n"
-                    f"   Уверенность: {'▓' * int(signal.confidence * 10)}{' ' * (10 - int(signal.confidence * 10))} ({signal.confidence:.2f})\n"
-                    f"   {signal.description.split('.')[0]}.\n\n"
-                )
-            
-            message_text += f"\nВсего найдено сигналов: {len(signals)}\nОбновлено: {signals[0].timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
-            
-            # Создаем клавиатуру
-            builder = InlineKeyboardBuilder()
-            builder.button(text="🔄 Обновить сигналы", callback_data="crypto_smart_money")
-            builder.button(text="🔙 Вернуться в меню", callback_data="crypto_back_to_main")
-            builder.adjust(1)
-            
-            # Отправляем сообщение
-            await callback.message.edit_text(
-                text=message_text,
-                reply_markup=builder.as_markup(),
-                parse_mode="Markdown"
+            message_text += (
+                f"{i+1}. {direction_emoji} *{signal.pair}* | {direction_text} | ${signal.price:.4f}\n"
+                f"   Уверенность: {'▓' * int(signal.confidence * 10)}{' ' * (10 - int(signal.confidence * 10))} ({signal.confidence:.2f})\n"
+                f"   {signal.description.split('.')[0]}.\n\n"
             )
-            logger.info(f"Показаны сигналы Smart Money для пользователя {callback.from_user.id}")
-        else:
-            # Если сигналов нет
-            await callback.message.edit_text(
-                "🔍 *Сигналы Smart Money*\n\n"
-                "В данный момент не обнаружено значимых сигналов.\n\n"
-                "Попробуйте проверить позже или настроить параметры анализа в настройках.",
-                reply_markup=get_crypto_main_keyboard(),
-                parse_mode="Markdown"
-            )
-            logger.info(f"Для пользователя {callback.from_user.id} не найдено сигналов Smart Money")
+        
+        message_text += f"\nВсего найдено сигналов: {len(signals)}\nОбновлено: {signals[0].timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        # Создаем клавиатуру
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔄 Обновить сигналы", callback_data="crypto_smart_money")
+        builder.button(text="🔙 Вернуться в меню", callback_data="crypto_back_to_main")
+        builder.adjust(1)
+        
+        # Отправляем сообщение
+        await callback.message.edit_text(
+            text=message_text,
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+        logger.info(f"Показаны сигналы Smart Money для пользователя {callback.from_user.id}")
     except Exception as e:
         logger.error(f"Ошибка при показе сигналов Smart Money: {e}", exc_info=True)
         await callback.message.edit_text(
