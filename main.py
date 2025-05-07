@@ -4,7 +4,6 @@ import logging
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers, set_bot
 from handlers_promotion import register_promotion_handlers
-from crypto import register_crypto_handlers, register_crypto_menu_handlers
 import logging
 
 # Настройка более подробного логирования
@@ -41,14 +40,12 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     
-    # Сохраняем экземпляр бота в handlers
+    # Сохраняем экземпляр бота в handlers и других модулях
     set_bot(bot)
     
     # Регистрация обработчиков
     register_handlers(dp)
     register_promotion_handlers(dp)
-    register_crypto_handlers(dp)
-    register_crypto_menu_handlers(dp)
     
     # Запуск бота
     logger = logging.getLogger(__name__)
