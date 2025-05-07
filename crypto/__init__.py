@@ -4,17 +4,24 @@
 """
 
 import logging
+import os
 from aiogram import Router, Dispatcher
+
+# Эта строка больше не нужна, так как мы используем абсолютные пути ниже
 
 # Настройка логирования для криптомодуля
 logger = logging.getLogger('crypto')
 logger.setLevel(logging.INFO)
 
 # Создаем обработчики для файлов логов
-file_handler_info = logging.FileHandler('logs/smart_money_info.log')
+# Используем абсолютные пути для файлов логов
+log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+file_handler_info = logging.FileHandler(os.path.join(log_dir, 'smart_money_info.log'))
 file_handler_info.setLevel(logging.INFO)
 
-file_handler_error = logging.FileHandler('logs/smart_money_errors.log')
+file_handler_error = logging.FileHandler(os.path.join(log_dir, 'smart_money_errors.log'))
 file_handler_error.setLevel(logging.ERROR)
 
 # Форматирование логов
