@@ -49,9 +49,10 @@ class MarketAnalyzer:
                 return None
             
             # Сортируем монеты по изменению цены за 24 часа
+            # Адаптируем к новой структуре данных API
             sorted_coins = sorted(
                 coins, 
-                key=lambda x: x.get('values', {}).get('USD', {}).get('percentChange24h', 0) or 0, 
+                key=lambda x: x.get('delta', {}).get('day', 0) or 0, 
                 reverse=True
             )
             
@@ -59,33 +60,33 @@ class MarketAnalyzer:
             top_gainers = sorted_coins[:5]
             top_losers = sorted_coins[-5:]
             
-            # Форматируем данные для топ монет
+            # Форматируем данные для топ монет с учетом новой структуры данных
             formatted_gainers = [
                 {
-                    'symbol': coin['symbol'],
-                    'name': coin['name'],
-                    'price': coin.get('values', {}).get('USD', {}).get('price', 0),
-                    'change_24h': coin.get('values', {}).get('USD', {}).get('percentChange24h', 0)
+                    'symbol': coin.get('symbol', ''),
+                    'name': coin.get('name', ''),
+                    'price': coin.get('price', {}).get('USD', 0),
+                    'change_24h': coin.get('delta', {}).get('day', 0) or 0
                 }
                 for coin in top_gainers
             ]
             
             formatted_losers = [
                 {
-                    'symbol': coin['symbol'],
-                    'name': coin['name'],
-                    'price': coin.get('values', {}).get('USD', {}).get('price', 0),
-                    'change_24h': coin.get('values', {}).get('USD', {}).get('percentChange24h', 0)
+                    'symbol': coin.get('symbol', ''),
+                    'name': coin.get('name', ''),
+                    'price': coin.get('price', {}).get('USD', 0),
+                    'change_24h': coin.get('delta', {}).get('day', 0) or 0
                 }
                 for coin in top_losers
             ]
             
-            # Создаем обзор рынка
+            # Создаем обзор рынка с учетом новой структуры данных
             overview = MarketOverview(
                 timestamp=datetime.now(),
-                total_market_cap=market_data.get('marketCap', {}).get('USD', 0),
+                total_market_cap=market_data.get('totalMarketCap', {}).get('USD', 0),
                 btc_dominance=market_data.get('btcDominance', 0),
-                total_volume_24h=market_data.get('volume24h', {}).get('USD', 0),
+                total_volume_24h=market_data.get('totalVolume24h', {}).get('USD', 0),
                 top_gainers=formatted_gainers,
                 top_losers=formatted_losers
             )
@@ -115,15 +116,19 @@ class MarketAnalyzer:
                 logger.error("Не удалось получить данные о монетах для анализа объема")
                 return []
             
-            # Анализируем каждую монету
+            # Анализируем каждую монету с учетом новой структуры данных
             for coin in coins:
                 try:
-                    symbol = coin['symbol']
-                    name = coin['name']
+                    symbol = coin.get('symbol', '')
+                    name = coin.get('name', '')
                     
-                    # Получаем данные об объеме
-                    volume_24h = coin.get('values', {}).get('USD', {}).get('volume24h', 0)
-                    avg_volume_7d = coin.get('values', {}).get('USD', {}).get('averageVolume7d', 0)
+                    # Получаем данные об объеме с учетом новой структуры
+                    volume_24h = coin.get('volume', {}).get('USD', 0)
+                    avg_volume_7d = coin.get('avgVolume', {}).get('USD', 0) if 'avgVolume' in coin else 0
+                    
+                    # Если нет данных о среднем объеме за 7 дней, используем текущий объем / 1.5 как приближение
+                    if not avg_volume_7d:
+                        avg_volume_7d = volume_24h / 1.5
                     
                     # Проверяем наличие данных
                     if not volume_24h or not avg_volume_7d:
@@ -135,7 +140,7 @@ class MarketAnalyzer:
                     # Если отношение превышает порог, создаем сигнал
                     if volume_ratio > threshold:
                         # Определяем направление на основе изменения цены
-                        price_change = coin.get('values', {}).get('USD', {}).get('percentChange24h', 0)
+                        price_change = coin.get('delta', {}).get('day', 0) or 0
                         direction = SignalDirection.LONG if price_change > 0 else SignalDirection.SHORT
                         
                         # Создаем сигнал
@@ -145,7 +150,7 @@ class MarketAnalyzer:
                             timestamp=datetime.now(),
                             signal_type=SignalType.VOLUME_SPIKE,
                             direction=direction,
-                            price=coin.get('values', {}).get('USD', {}).get('price', 0),
+                            price=coin.get('price', {}).get('USD', 0),
                             confidence=min(volume_ratio / threshold, 1.0),  # Нормализуем уверенность
                             description=f"Обнаружен всплеск объема для {name} ({symbol}). "
                                        f"Текущий объем в {volume_ratio:.2f}x раз выше среднего за 7 дней.",

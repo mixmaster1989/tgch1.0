@@ -66,12 +66,15 @@ class CryptorankAPI:
         if params is None:
             params = {}
         
-        # Добавляем API ключ
-        params['api_key'] = self.api_key
+        # Добавляем API ключ в заголовки вместо параметров
+        headers = {
+            "X-API-KEY": self.api_key,
+            "Accept": "application/json"
+        }
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
+                async with session.get(url, params=params, headers=headers) as response:
                     # Увеличиваем счетчик запросов
                     self.requests_in_current_minute += 1
                     self.last_request_time = time.time()
@@ -108,7 +111,8 @@ class CryptorankAPI:
                 'offset': offset
             }
             
-            response = await self._make_request('coins', params)
+            # Изменяем эндпоинт на правильный
+            response = await self._make_request('currencies', params)
             
             if 'data' in response:
                 coins = response['data']
@@ -132,7 +136,8 @@ class CryptorankAPI:
             Optional[Dict[str, Any]]: Информация о монете или None в случае ошибки
         """
         try:
-            response = await self._make_request(f'coins/{coin_id}')
+            # Изменяем эндпоинт на правильный
+            response = await self._make_request(f'currencies/{coin_id}')
             
             if 'data' in response:
                 coin_data = response['data']
@@ -153,7 +158,8 @@ class CryptorankAPI:
             Optional[Dict[str, Any]]: Данные о рынке или None в случае ошибки
         """
         try:
-            response = await self._make_request('global')
+            # Изменяем эндпоинт на правильный
+            response = await self._make_request('stats/global')
             
             if 'data' in response:
                 market_data = response['data']

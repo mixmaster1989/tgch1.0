@@ -8,7 +8,7 @@ api:
 
 analytics:
   volume_spike:
-    threshold: 1.8  # Снижаем порог для обнаружения большего количества сигналов
+    threshold: 1.5  # Снижаем порог для обнаружения большего количества сигналов
     ma_period: 24  # часов
   large_orders:
     min_order_size_btc: 10.0
