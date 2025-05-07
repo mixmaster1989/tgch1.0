@@ -167,11 +167,16 @@ async def crypto_settings(message: types.Message):
     logger.debug(f"message: {message}")
     
     try:
+        # Подробное логирование для отладки
+        logger.debug("Начинаем обработку кнопки 'Настройки крипто'")
+        
         # Импортируем функцию из telegram_interface
+        logger.debug("Пытаемся импортировать get_crypto_settings_keyboard и bot_instance из telegram_interface")
         from .telegram_interface import get_crypto_settings_keyboard, bot_instance
         logger.debug(f"Импортирован bot_instance: {bot_instance}")
         
         # Получаем клавиатуру настроек
+        logger.debug("Пытаемся получить клавиатуру настроек")
         keyboard = get_crypto_settings_keyboard()
         logger.debug(f"Создана клавиатура настроек: {keyboard}")
         
@@ -184,14 +189,17 @@ async def crypto_settings(message: types.Message):
         )
         logger.debug(f"Результат отправки сообщения: {result}")
     except Exception as e:
-        log_exception(e, f"Ошибка в обработчике настроек крипто для пользователя {message.from_user.id}")
+        logger.error(f"Ошибка в обработчике настроек крипто для пользователя {message.from_user.id}: {e}")
+        logger.error(f"Тип ошибки: {type(e)}")
+        logger.error(f"Трассировка стека: {traceback.format_exc()}")
         try:
             await message.answer(
                 f"❌ Произошла ошибка при открытии настроек: {e}",
                 reply_markup=get_crypto_main_menu()
             )
         except Exception as e2:
-            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+            logger.error(f"Ошибка при отправке сообщения об ошибке: {e2}")
+            logger.error(f"Трассировка стека для второй ошибки: {traceback.format_exc()}")
 
 @crypto_menu_router.message(F.text == "🔙 Назад к крипто")
 async def back_to_crypto(message: types.Message):
