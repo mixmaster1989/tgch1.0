@@ -31,6 +31,7 @@ def setup_crypto_handlers(router: Router):
     """
     # Команда для входа в режим криптоанализа
     router.message.register(cmd_crypto_mode, Command("crypto_mode"))
+    router.message.register(cmd_crypto_mode, Command("crypto"))  # Добавляем совместимость со старой командой
     
     # Обработчики для кнопок главного меню
     router.callback_query.register(show_market_overview, F.data == "crypto_market_overview")

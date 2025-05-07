@@ -7,8 +7,6 @@ import logging
 import os
 from aiogram import Router, Dispatcher
 
-# Эта строка больше не нужна, так как мы используем абсолютные пути ниже
-
 # Настройка логирования для криптомодуля
 logger = logging.getLogger('crypto')
 logger.setLevel(logging.INFO)
