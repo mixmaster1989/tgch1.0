@@ -634,7 +634,29 @@ async def process_user_input(message: types.Message):
             await process_settings_pairs(callback)
 
         except Exception as e:
+            log_exception(e, f"Ошибка при удалении торговой пары для пользователя {message.from_user.id}")
+            try:
+                await message.answer(
+                    f"❌ Произошла ошибка при удалении торговой пары: {e}\n\n"
+                    "Пожалуйста, попробуйте еще раз или вернитесь в настройки."
+                )
+            except Exception as e2:
+                log_exception(e2, "Ошибка при отправке сообщения об ошибке")
+                
+    elif state == 'waiting_signal_channel':
+        # Обработка ввода ID канала для сигналов
+        logger.info(f"Получен ID канала для сигналов от пользователя {message.from_user.id}: {message.text}")
+
+        try:
+            # Получаем ID канала из сообщения
+            channel_id = message.text.strip()
             
+            # Удаляем символ @ в начале, если он есть
+            if channel_id.startswith('@'):
+                channel_id = channel_id[1:]
+            
+            # Обновляем конфигурацию
+            signals_config = crypto_config.get('signals', {})
             signals_config['channel_id'] = channel_id
             crypto_config['signals'] = signals_config
             save_crypto_config()
