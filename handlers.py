@@ -144,3 +144,7 @@ async def text_promotion(message: types.Message):
     # Вызываем команду /promotion
     from handlers_promotion import cmd_promotion
     await cmd_promotion(message)
+
+def register_handlers(dp: Dispatcher):
+    # Регистрируем роутер в диспетчере
+    dp.include_router(router)
