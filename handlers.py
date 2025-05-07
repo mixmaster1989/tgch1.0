@@ -134,6 +134,100 @@ def get_check_status_keyboard(task_id):
     ])
     return keyboard
 
+# Обработчики команд
+@router.message(Command("start"))
+async def cmd_start(message: types.Message):
+    is_admin = message.from_user.id == ADMIN_ID
+    
+    welcome_text = (
+        "👋 Привет! Я бот для генерации и публикации контента в Telegram-канал.\n\n"
+        "Я могу помочь вам создавать разнообразные посты для вашего канала "
+        "с использованием искусственного интеллекта.\n\n"
+        "Используйте кнопки ниже или команды для взаимодействия со мной."
+    )
+    
+    await message.answer(welcome_text, reply_markup=get_main_keyboard(is_admin))
+
+@router.message(Command("help"))
+async def cmd_help(message: types.Message):
+    is_admin = message.from_user.id == ADMIN_ID
+    
+    help_text = """
+🤖 *TGE Bot* - помощник для раскрутки Telegram-канала
+
+Доступные команды:
+/start - Начать работу с ботом
+/generate - Сгенерировать пост для канала
+/help - Показать это сообщение
+
+"""
+    
+    if is_admin:
+        help_text += """
+Команды администратора:
+/publish - Сгенерировать и опубликовать пост в канал
+/publish_type - Опубликовать пост определенного типа и категории
+/settings - Настройки бота
+/promotion - Меню продвижения канала
+
+"""
+    
+    help_text += """
+Вы также можете использовать кнопки для удобного взаимодействия с ботом.
+"""
+    
+    await message.answer(help_text, parse_mode="Markdown", reply_markup=get_main_keyboard(is_admin))
+
+@router.message(Command("generate"))
+async def cmd_generate(message: types.Message):
+    await message.answer("Выберите тип поста:", reply_markup=get_post_type_keyboard())
+
+@router.message(Command("publish"))
+async def cmd_publish(message: types.Message):
+    # Проверяем, что команду отправил администратор
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("Эта команда доступна только администратору.")
+        return
+    
+    await message.answer("Выберите тип поста для публикации:", reply_markup=get_post_type_keyboard())
+
+@router.message(Command("settings"))
+async def cmd_settings(message: types.Message):
+    # Проверяем, что команду отправил администратор
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("Эта команда доступна только администратору.")
+        return
+    
+    await message.answer("Настройки бота:", reply_markup=get_settings_keyboard())
+
+@router.message(Command("promotion"))
+async def cmd_promotion_handler(message: types.Message):
+    # Проверяем, что команду отправил администратор
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("Эта команда доступна только администратору.")
+        return
+    
+    # Вызываем команду /promotion
+    from handlers_promotion import cmd_promotion
+    await cmd_promotion(message)
+
+# Обработчики текстовых сообщений
+@router.message(F.text == "🔄 Сгенерировать пост")
+async def text_generate(message: types.Message):
+    await cmd_generate(message)
+
+@router.message(F.text == "📢 Опубликовать в канал")
+async def text_publish(message: types.Message):
+    await cmd_publish(message)
+
+@router.message(F.text == "ℹ️ Помощь")
+async def text_help(message: types.Message):
+    await cmd_help(message)
+
+@router.message(F.text == "⚙️ Настройки")
+async def text_settings(message: types.Message):
+    await cmd_settings(message)
+
 @router.message(F.text == "🚀 Продвижение")
 async def text_promotion(message: types.Message):
     # Проверяем, что команду отправил администратор
