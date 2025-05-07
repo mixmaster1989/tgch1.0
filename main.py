@@ -4,6 +4,8 @@ import logging
 from aiogram import Bot, Dispatcher
 from handlers import register_handlers, set_bot
 from handlers_promotion import register_promotion_handlers
+from crypto import register_crypto_handlers
+from crypto.main_menu import register_crypto_menu_handlers
 import logging
 
 # Настройка более подробного логирования
@@ -46,6 +48,22 @@ async def main():
     # Регистрация обработчиков
     register_handlers(dp)
     register_promotion_handlers(dp)
+    
+    # Регистрация обработчиков криптомодуля
+    register_crypto_handlers(dp)
+    register_crypto_menu_handlers(dp)
+    
+    # Устанавливаем экземпляр бота для криптомодуля
+    from crypto.handlers import set_bot as crypto_set_bot
+    from crypto.main_menu import set_bot as crypto_menu_set_bot
+    from crypto.signal_dispatcher import SignalDispatcher
+    
+    crypto_set_bot(bot)
+    crypto_menu_set_bot(bot)
+    
+    # Инициализируем диспетчер сигналов
+    signal_dispatcher = SignalDispatcher()
+    signal_dispatcher.set_bot(bot)
     
     # Запуск бота
     logger = logging.getLogger(__name__)

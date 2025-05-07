@@ -1,0 +1,38 @@
+api:
+  cryptorank:
+    api_key: a3b7d93f96fe3e3ea8cf6e7fbaec68f77fa730e8a2b3af6151d30e25a629
+    base_url: https://api.cryptorank.io/v1
+    rate_limit:
+      requests_per_minute: 30
+      retry_after: 60
+
+analytics:
+  volume_spike:
+    threshold: 2.5
+    ma_period: 24  # часов
+  large_orders:
+    min_order_size_btc: 10.0
+    imbalance_threshold: 1.5
+  funding_rate:
+    alert_threshold: 0.05  # 5%
+    check_interval: 5  # минут
+
+notification:
+  max_signals_per_hour: 10
+  cooldown_per_pair: 300  # 5 минут
+  whitelist_pairs:
+    - BTC/USDT
+    - ETH/USDT
+    - BNB/USDT
+    - SOL/USDT
+    - XRP/USDT
+    - ADA/USDT
+    - AVAX/USDT
+    - DOT/USDT
+    - MATIC/USDT
+
+cache:
+  ttl:
+    market_data: 300  # 5 минут
+    coin_info: 3600   # 1 час
+    signals: 86400    # 24 часа
