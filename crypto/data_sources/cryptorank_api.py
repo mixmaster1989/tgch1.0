@@ -122,8 +122,16 @@ class CryptorankAPI:
             List[Dict[str, Any]]: Список монет
         """
         try:
+            # API требует, чтобы limit был одним из значений: 100, 500, 1000
+            if limit <= 100:
+                limit = 100
+            elif limit <= 500:
+                limit = 500
+            else:
+                limit = 1000
+                
             params = {
-                'limit': min(limit, 1000),  # Максимум 1000 по документации
+                'limit': limit,
                 'skip': offset,
                 'sortBy': sort_by,
                 'sortDirection': 'ASC' if sort_by == 'rank' else 'DESC'

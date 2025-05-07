@@ -80,10 +80,10 @@ async def show_market_overview(callback: CallbackQuery):
         )
         
         # Получаем обзор рынка
-        from .analytics.market_analyzer import MarketAnalyzer
+        from .analytics.crypto_rank_analyzer import CryptoRankAnalyzer
         from .notification.message_formatter import MessageFormatter
         
-        analyzer = MarketAnalyzer()
+        analyzer = CryptoRankAnalyzer()
         overview = await analyzer.get_market_overview()
         
         if overview:
@@ -131,11 +131,11 @@ async def show_smart_money_signals(callback: CallbackQuery):
         )
         
         # Получаем сигналы о всплесках объема
-        from .analytics.market_analyzer import MarketAnalyzer
+        from .analytics.crypto_rank_analyzer import CryptoRankAnalyzer
         from .notification.message_formatter import MessageFormatter
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         
-        analyzer = MarketAnalyzer()
+        analyzer = CryptoRankAnalyzer()
         signals = await analyzer.detect_volume_spikes()
         
         if signals:
