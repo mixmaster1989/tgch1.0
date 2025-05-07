@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from aiogram import Router, types, F
+from aiogram import Router, types, F, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from .config import crypto_config
@@ -19,6 +19,12 @@ data_manager = None
 analyzer = None
 signal_dispatcher = None
 monitoring_task = None
+bot_instance = None
+
+# Функция для установки экземпляра бота
+def set_bot(bot):
+    global bot_instance
+    bot_instance = bot
 
 # Клавиатуры
 def get_crypto_keyboard():
@@ -115,7 +121,6 @@ async def process_crypto_back(callback: types.CallbackQuery):
     logger.info(f"Пользователь {callback.from_user.id} нажал кнопку 'Назад'")
     
     await callback.message.delete()
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_analyze")
 async def process_crypto_analyze(callback: types.CallbackQuery):
@@ -186,8 +191,6 @@ async def process_crypto_analyze(callback: types.CallbackQuery):
             f"❌ Произошла ошибка при анализе рынка: {e}",
             reply_markup=get_crypto_keyboard()
         )
-    
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_monitoring")
 async def process_crypto_monitoring(callback: types.CallbackQuery):
@@ -224,7 +227,6 @@ async def process_crypto_monitoring(callback: types.CallbackQuery):
     ])
     
     await callback.message.edit_text(message_text, reply_markup=keyboard)
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_toggle_monitoring_task")
 async def process_toggle_monitoring(callback: types.CallbackQuery):
@@ -239,7 +241,7 @@ async def process_toggle_monitoring(callback: types.CallbackQuery):
     if is_monitoring_active:
         # Останавливаем мониторинг
         monitoring_task.cancel()
-        await callback.answer("Мониторинг остановлен")
+        await callback.message.edit_text("Мониторинг остановлен")
         logger.info("Мониторинг остановлен")
     else:
         # Инициализируем компоненты, если необходимо
@@ -253,12 +255,11 @@ async def process_toggle_monitoring(callback: types.CallbackQuery):
         if not signal_dispatcher:
             signal_dispatcher = SignalDispatcher()
             # Получаем экземпляр бота из глобальной переменной
-            from handlers import bot_instance
             signal_dispatcher.set_bot(bot_instance)
         
         # Запускаем мониторинг
         monitoring_task = asyncio.create_task(run_monitoring(analyzer, signal_dispatcher))
-        await callback.answer("Мониторинг запущен")
+        await callback.message.edit_text("Мониторинг запущен")
         logger.info("Мониторинг запущен")
     
     # Обновляем сообщение
@@ -274,8 +275,6 @@ async def process_crypto_settings(callback: types.CallbackQuery):
         "Здесь вы можете настроить параметры мониторинга и анализа.",
         reply_markup=get_crypto_settings_keyboard()
     )
-    
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_help")
 async def process_crypto_help(callback: types.CallbackQuery):
@@ -315,8 +314,6 @@ async def process_crypto_help(callback: types.CallbackQuery):
         help_text,
         reply_markup=get_crypto_keyboard()
     )
-    
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_back_to_main")
 async def process_back_to_main(callback: types.CallbackQuery):
@@ -330,8 +327,6 @@ async def process_back_to_main(callback: types.CallbackQuery):
         "Выберите действие:",
         reply_markup=get_crypto_keyboard()
     )
-    
-    await callback.answer()
 
 @crypto_router.callback_query(F.data == "crypto_back_to_settings")
 async def process_back_to_settings(callback: types.CallbackQuery):
@@ -354,8 +349,6 @@ async def process_crypto_pairs(callback: types.CallbackQuery):
         "Выберите пару для удаления или добавьте новую:",
         reply_markup=get_crypto_pairs_keyboard()
     )
-    
-    await callback.answer()
 
 # Функция для запуска мониторинга
 async def run_monitoring(analyzer, signal_dispatcher, interval=300):
@@ -413,6 +406,9 @@ async def cmd_crypto_analyze(message: types.Message):
         data="crypto_analyze"
     )
     
+    # Устанавливаем бота для callback
+    callback.bot = bot_instance
+    
     # Вызываем обработчик
     await process_crypto_analyze(callback)
 
@@ -440,8 +436,6 @@ async def cmd_crypto_start(message: types.Message):
     
     if not signal_dispatcher:
         signal_dispatcher = SignalDispatcher()
-        # Получаем экземпляр бота из глобальной переменной
-        from handlers import bot_instance
         signal_dispatcher.set_bot(bot_instance)
     
     # Запускаем мониторинг
@@ -474,4 +468,9 @@ async def cmd_crypto_stop(message: types.Message):
 def register_crypto_handlers(dp):
     """Регистрация обработчиков команд криптовалютного модуля"""
     logger.info("Регистрация обработчиков команд криптовалютного модуля")
+    
+    # Получаем экземпляр бота из глобальной переменной в handlers.py
+    from handlers import bot_instance
+    set_bot(bot_instance)
+    
     dp.include_router(crypto_router)

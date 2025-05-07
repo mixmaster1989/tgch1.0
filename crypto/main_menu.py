@@ -1,5 +1,5 @@
 import logging
-from aiogram import Router, types, F
+from aiogram import Router, types, F, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from .config import crypto_config
@@ -9,6 +9,14 @@ logger = logging.getLogger(__name__)
 
 # Создаем роутер для обработчиков команд криптовалютного меню
 crypto_menu_router = Router()
+
+# Глобальная переменная для хранения экземпляра бота
+bot_instance = None
+
+# Функция для установки экземпляра бота
+def set_bot(bot):
+    global bot_instance
+    bot_instance = bot
 
 # Клавиатуры
 def get_crypto_main_menu():
@@ -79,7 +87,7 @@ async def crypto_monitoring(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} выбрал 'Мониторинг'")
     
     # Импортируем функцию из telegram_interface
-    from .telegram_interface import process_crypto_monitoring
+    from .telegram_interface import process_crypto_monitoring, bot_instance
     
     # Создаем временное сообщение
     temp_msg = await message.answer("⏳ Загрузка информации о мониторинге...")
@@ -92,6 +100,9 @@ async def crypto_monitoring(message: types.Message):
         message=temp_msg,
         data="crypto_monitoring"
     )
+    
+    # Устанавливаем бота для callback
+    callback.bot = bot_instance
     
     # Вызываем обработчик
     await process_crypto_monitoring(callback)
@@ -140,22 +151,14 @@ async def crypto_settings(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} выбрал 'Настройки крипто'")
     
     # Импортируем функцию из telegram_interface
-    from .telegram_interface import process_crypto_settings
+    from .telegram_interface import get_crypto_settings_keyboard, bot_instance
     
-    # Создаем временное сообщение
-    temp_msg = await message.answer("⏳ Загрузка настроек...")
-    
-    # Создаем callback-запрос для использования существующего обработчика
-    callback = types.CallbackQuery(
-        id="crypto_settings",
-        from_user=message.from_user,
-        chat_instance=str(message.chat.id),
-        message=temp_msg,
-        data="crypto_settings"
+    # Отправляем сообщение с настройками
+    await message.answer(
+        "⚙️ Настройки криптовалютного модуля\n\n"
+        "Здесь вы можете настроить параметры мониторинга и анализа.",
+        reply_markup=get_crypto_settings_keyboard()
     )
-    
-    # Вызываем обработчик
-    await process_crypto_settings(callback)
 
 @crypto_menu_router.message(F.text == "🔙 Назад к крипто")
 async def back_to_crypto(message: types.Message):
@@ -307,4 +310,9 @@ async def crypto_funding(message: types.Message):
 def register_crypto_menu_handlers(dp):
     """Регистрация обработчиков команд меню криптовалютного модуля"""
     logger.info("Регистрация обработчиков команд меню криптовалютного модуля")
+    
+    # Получаем экземпляр бота из глобальной переменной в handlers.py
+    from handlers import bot_instance
+    set_bot(bot_instance)
+    
     dp.include_router(crypto_menu_router)
