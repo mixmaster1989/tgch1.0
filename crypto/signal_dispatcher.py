@@ -2,6 +2,8 @@ import logging
 import asyncio
 import json
 import os
+import sys
+import traceback
 from datetime import datetime
 from .config import crypto_config
 import matplotlib.pyplot as plt
@@ -9,8 +11,21 @@ import matplotlib.dates as mdates
 import numpy as np
 import io
 
-# Настройка логирования
+# Настройка подробного логирования
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Добавляем обработчик для вывода в консоль
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Функция для логирования с трассировкой стека
+def log_exception(e, message="Произошла ошибка"):
+    logger.error(f"{message}: {str(e)}")
+    logger.error(traceback.format_exc())
 
 class SignalDispatcher:
     """

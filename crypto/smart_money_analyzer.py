@@ -1,12 +1,27 @@
 import logging
 import asyncio
 import numpy as np
+import sys
+import traceback
 from datetime import datetime, timedelta
 from .config import crypto_config
 from .data_sources import DataSourceManager
 
-# Настройка логирования
+# Настройка подробного логирования
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Добавляем обработчик для вывода в консоль
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Функция для логирования с трассировкой стека
+def log_exception(e, message="Произошла ошибка"):
+    logger.error(f"{message}: {str(e)}")
+    logger.error(traceback.format_exc())
 
 class SmartMoneyAnalyzer:
     """

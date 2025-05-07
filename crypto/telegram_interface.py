@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import traceback
+import sys
 from aiogram import Router, types, F, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -8,8 +10,21 @@ from .smart_money_analyzer import SmartMoneyAnalyzer
 from .data_sources import DataSourceManager
 from .signal_dispatcher import SignalDispatcher
 
-# Настройка логирования
+# Настройка подробного логирования
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Добавляем обработчик для вывода в консоль
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Функция для логирования с трассировкой стека
+def log_exception(e, message="Произошла ошибка"):
+    logger.error(f"{message}: {str(e)}")
+    logger.error(traceback.format_exc())
 
 # Создаем роутер для обработчиков команд криптовалютного модуля
 crypto_router = Router()
@@ -144,8 +159,10 @@ async def process_crypto_analyze(callback: types.CallbackQuery):
     )
     
     try:
+        logger.debug(f"Начинаем анализ рынка для пользователя {callback.from_user.id}")
         # Запускаем анализ
         results = await analyzer.run_analysis()
+        logger.debug(f"Анализ рынка завершен, получены результаты: {results}")
         
         # Формируем сообщение с результатами
         message_text = "📊 Результаты анализа рынка:\n\n"
@@ -153,6 +170,7 @@ async def process_crypto_analyze(callback: types.CallbackQuery):
         for pair, pair_results in results.items():
             signals = pair_results.get("signals", [])
             price = pair_results.get("price")
+            logger.debug(f"Обрабатываем пару {pair}, цена: {price}, сигналы: {signals}")
             
             if signals:
                 # Группируем сигналы по типу
@@ -164,6 +182,7 @@ async def process_crypto_analyze(callback: types.CallbackQuery):
                     signal_types[signal_type].append(signal)
                 
                 message_text += f"**{pair}** - ${price:.2f}\n"
+                logger.debug(f"Сгруппированные сигналы для {pair}: {signal_types}")
                 
                 for signal_type, type_signals in signal_types.items():
                     # Определяем общее направление сигналов
@@ -174,59 +193,89 @@ async def process_crypto_analyze(callback: types.CallbackQuery):
                     direction_emoji = "🟢" if direction == "LONG" else "🔴"
                     
                     message_text += f"{direction_emoji} {signal_type.replace('_', ' ').title()}: {direction}\n"
+                    logger.debug(f"Добавлен сигнал {signal_type}: {direction} (long: {long_count}, short: {short_count})")
                 
                 message_text += "\n"
         
         if message_text == "📊 Результаты анализа рынка:\n\n":
             message_text += "Сигналов не обнаружено."
+            logger.debug("Сигналов не обнаружено")
         
         # Отправляем результаты
+        logger.debug(f"Отправляем результаты анализа пользователю {callback.from_user.id}")
+        logger.debug(f"Сообщение: {message_text}")
+        logger.debug(f"callback.message: {callback.message}")
+        logger.debug(f"bot_instance: {bot_instance}")
+        
         await callback.message.edit_text(
             message_text,
             reply_markup=get_crypto_keyboard()
         )
+        logger.debug("Результаты анализа успешно отправлены")
     except Exception as e:
-        logger.error(f"Ошибка при анализе рынка: {e}")
-        await callback.message.edit_text(
-            f"❌ Произошла ошибка при анализе рынка: {e}",
-            reply_markup=get_crypto_keyboard()
-        )
+        log_exception(e, f"Ошибка при анализе рынка для пользователя {callback.from_user.id}")
+        try:
+            await callback.message.edit_text(
+                f"❌ Произошла ошибка при анализе рынка: {e}",
+                reply_markup=get_crypto_keyboard()
+            )
+            logger.debug("Сообщение об ошибке отправлено")
+        except Exception as e2:
+            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
 @crypto_router.callback_query(F.data == "crypto_monitoring")
 async def process_crypto_monitoring(callback: types.CallbackQuery):
     """Обработчик кнопки 'Мониторинг'"""
     logger.info(f"Пользователь {callback.from_user.id} запросил управление мониторингом")
+    logger.debug(f"callback: {callback}")
+    logger.debug(f"callback.message: {callback.message}")
+    logger.debug(f"callback.bot: {callback.bot}")
     
     global monitoring_task
     
-    # Проверяем, запущен ли мониторинг
-    is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
-    
-    # Формируем сообщение
-    message_text = "🔍 Управление мониторингом\n\n"
-    message_text += f"Статус: {'✅ Активен' if is_monitoring_active else '❌ Неактивен'}\n\n"
-    
-    # Получаем настройки мониторинга
-    pairs = crypto_config.get('monitoring', {}).get('pairs', [])
-    timeframes = crypto_config.get('monitoring', {}).get('timeframes', [])
-    
-    message_text += f"Отслеживаемые пары: {', '.join(pairs)}\n"
-    message_text += f"Таймфреймы: {', '.join(timeframes)}\n\n"
-    
-    # Создаем клавиатуру
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="⏹ Остановить" if is_monitoring_active else "▶️ Запустить", 
-                callback_data="crypto_toggle_monitoring_task"
+    try:
+        # Проверяем, запущен ли мониторинг
+        is_monitoring_active = monitoring_task is not None and not monitoring_task.done()
+        logger.debug(f"Статус мониторинга: {'активен' if is_monitoring_active else 'неактивен'}")
+        
+        # Формируем сообщение
+        message_text = "🔍 Управление мониторингом\n\n"
+        message_text += f"Статус: {'✅ Активен' if is_monitoring_active else '❌ Неактивен'}\n\n"
+        
+        # Получаем настройки мониторинга
+        pairs = crypto_config.get('monitoring', {}).get('pairs', [])
+        timeframes = crypto_config.get('monitoring', {}).get('timeframes', [])
+        logger.debug(f"Настройки мониторинга: пары={pairs}, таймфреймы={timeframes}")
+        
+        message_text += f"Отслеживаемые пары: {', '.join(pairs)}\n"
+        message_text += f"Таймфреймы: {', '.join(timeframes)}\n\n"
+        
+        # Создаем клавиатуру
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⏹ Остановить" if is_monitoring_active else "▶️ Запустить", 
+                    callback_data="crypto_toggle_monitoring_task"
+                )
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back_to_main")
+            ]
+        ])
+        logger.debug(f"Создана клавиатура: {keyboard}")
+        
+        logger.debug(f"Отправляем сообщение: {message_text}")
+        await callback.message.edit_text(message_text, reply_markup=keyboard)
+        logger.debug("Сообщение успешно отправлено")
+    except Exception as e:
+        log_exception(e, f"Ошибка в обработчике мониторинга для пользователя {callback.from_user.id}")
+        try:
+            await callback.message.edit_text(
+                f"❌ Произошла ошибка при управлении мониторингом: {e}",
+                reply_markup=get_crypto_keyboard()
             )
-        ],
-        [
-            InlineKeyboardButton(text="🔙 Назад", callback_data="crypto_back_to_main")
-        ]
-    ])
-    
-    await callback.message.edit_text(message_text, reply_markup=keyboard)
+        except Exception as e2:
+            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
 @crypto_router.callback_query(F.data == "crypto_toggle_monitoring_task")
 async def process_toggle_monitoring(callback: types.CallbackQuery):
@@ -269,12 +318,30 @@ async def process_toggle_monitoring(callback: types.CallbackQuery):
 async def process_crypto_settings(callback: types.CallbackQuery):
     """Обработчик кнопки 'Настройки'"""
     logger.info(f"Пользователь {callback.from_user.id} открыл настройки криптовалютного модуля")
+    logger.debug(f"callback: {callback}")
+    logger.debug(f"callback.message: {callback.message}")
+    logger.debug(f"callback.bot: {callback.bot}")
     
-    await callback.message.edit_text(
-        "⚙️ Настройки криптовалютного модуля\n\n"
-        "Здесь вы можете настроить параметры мониторинга и анализа.",
-        reply_markup=get_crypto_settings_keyboard()
-    )
+    try:
+        keyboard = get_crypto_settings_keyboard()
+        logger.debug(f"Создана клавиатура настроек: {keyboard}")
+        
+        logger.debug("Отправляем сообщение с настройками")
+        await callback.message.edit_text(
+            "⚙️ Настройки криптовалютного модуля\n\n"
+            "Здесь вы можете настроить параметры мониторинга и анализа.",
+            reply_markup=keyboard
+        )
+        logger.debug("Сообщение с настройками успешно отправлено")
+    except Exception as e:
+        log_exception(e, f"Ошибка в обработчике настроек для пользователя {callback.from_user.id}")
+        try:
+            await callback.message.edit_text(
+                f"❌ Произошла ошибка при открытии настроек: {e}",
+                reply_markup=get_crypto_keyboard()
+            )
+        except Exception as e2:
+            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
 @crypto_router.callback_query(F.data == "crypto_help")
 async def process_crypto_help(callback: types.CallbackQuery):
@@ -469,8 +536,17 @@ def register_crypto_handlers(dp):
     """Регистрация обработчиков команд криптовалютного модуля"""
     logger.info("Регистрация обработчиков команд криптовалютного модуля")
     
-    # Получаем экземпляр бота из глобальной переменной в handlers.py
-    from handlers import bot_instance
-    set_bot(bot_instance)
-    
-    dp.include_router(crypto_router)
+    try:
+        # Получаем экземпляр бота из глобальной переменной в handlers.py
+        from handlers import bot_instance
+        logger.debug(f"Получен bot_instance из handlers: {bot_instance}")
+        
+        # Устанавливаем экземпляр бота
+        set_bot(bot_instance)
+        logger.debug(f"Установлен глобальный bot_instance: {bot_instance}")
+        
+        # Регистрируем роутер
+        dp.include_router(crypto_router)
+        logger.info("Роутер crypto_router успешно зарегистрирован")
+    except Exception as e:
+        log_exception(e, "Ошибка при регистрации обработчиков криптовалютного модуля")

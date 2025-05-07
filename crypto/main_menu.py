@@ -1,11 +1,26 @@
 import logging
+import traceback
+import sys
 from aiogram import Router, types, F, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from .config import crypto_config
 
-# Настройка логирования
+# Настройка подробного логирования
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Добавляем обработчик для вывода в консоль
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Функция для логирования с трассировкой стека
+def log_exception(e, message="Произошла ошибка"):
+    logger.error(f"{message}: {str(e)}")
+    logger.error(traceback.format_exc())
 
 # Создаем роутер для обработчиков команд криптовалютного меню
 crypto_menu_router = Router()
@@ -149,16 +164,34 @@ async def crypto_signals(message: types.Message):
 async def crypto_settings(message: types.Message):
     """Обработчик кнопки 'Настройки крипто'"""
     logger.info(f"Пользователь {message.from_user.id} выбрал 'Настройки крипто'")
+    logger.debug(f"message: {message}")
     
-    # Импортируем функцию из telegram_interface
-    from .telegram_interface import get_crypto_settings_keyboard, bot_instance
-    
-    # Отправляем сообщение с настройками
-    await message.answer(
-        "⚙️ Настройки криптовалютного модуля\n\n"
-        "Здесь вы можете настроить параметры мониторинга и анализа.",
-        reply_markup=get_crypto_settings_keyboard()
-    )
+    try:
+        # Импортируем функцию из telegram_interface
+        from .telegram_interface import get_crypto_settings_keyboard, bot_instance
+        logger.debug(f"Импортирован bot_instance: {bot_instance}")
+        
+        # Получаем клавиатуру настроек
+        keyboard = get_crypto_settings_keyboard()
+        logger.debug(f"Создана клавиатура настроек: {keyboard}")
+        
+        # Отправляем сообщение с настройками
+        logger.debug("Отправляем сообщение с настройками")
+        result = await message.answer(
+            "⚙️ Настройки криптовалютного модуля\n\n"
+            "Здесь вы можете настроить параметры мониторинга и анализа.",
+            reply_markup=keyboard
+        )
+        logger.debug(f"Результат отправки сообщения: {result}")
+    except Exception as e:
+        log_exception(e, f"Ошибка в обработчике настроек крипто для пользователя {message.from_user.id}")
+        try:
+            await message.answer(
+                f"❌ Произошла ошибка при открытии настроек: {e}",
+                reply_markup=get_crypto_main_menu()
+            )
+        except Exception as e2:
+            log_exception(e2, "Ошибка при отправке сообщения об ошибке")
 
 @crypto_menu_router.message(F.text == "🔙 Назад к крипто")
 async def back_to_crypto(message: types.Message):
@@ -311,8 +344,17 @@ def register_crypto_menu_handlers(dp):
     """Регистрация обработчиков команд меню криптовалютного модуля"""
     logger.info("Регистрация обработчиков команд меню криптовалютного модуля")
     
-    # Получаем экземпляр бота из глобальной переменной в handlers.py
-    from handlers import bot_instance
-    set_bot(bot_instance)
-    
-    dp.include_router(crypto_menu_router)
+    try:
+        # Получаем экземпляр бота из глобальной переменной в handlers.py
+        from handlers import bot_instance
+        logger.debug(f"Получен bot_instance из handlers: {bot_instance}")
+        
+        # Устанавливаем экземпляр бота
+        set_bot(bot_instance)
+        logger.debug(f"Установлен глобальный bot_instance: {bot_instance}")
+        
+        # Регистрируем роутер
+        dp.include_router(crypto_menu_router)
+        logger.info("Роутер crypto_menu_router успешно зарегистрирован")
+    except Exception as e:
+        log_exception(e, "Ошибка при регистрации обработчиков меню криптовалютного модуля")
