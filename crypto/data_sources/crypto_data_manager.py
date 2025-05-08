@@ -327,6 +327,72 @@ class CryptoDataManager:
             'timestamp': datetime.now()
         }
         
+        return overview    return history
+    
+    async def get_top_coins(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Получает топ монет по рыночной капитализации
+        
+        Args:
+            limit: Количество монет
+            
+        Returns:
+            List[Dict[str, Any]]: Список топ монет
+        """
+        # Получаем монеты из базы данных или API
+        coins = await self.get_coins(limit=limit)
+        
+        # Обновляем данные из WebSocket, если доступны
+        for coin in coins:
+            symbol = coin.get('symbol', '')
+            websocket_data = self.websocket.get_price_data(symbol)
+            
+            if websocket_data:
+                coin['price'] = websocket_data['price']
+                coin['price_change_24h'] = websocket_data['price_change']
+                coin['price_change_percent_24h'] = websocket_data['price_change_percent']
+        
+        return coins
+    
+    async def get_market_overview(self) -> Dict[str, Any]:
+        """
+        Получает обзор рынка
+        
+        Returns:
+            Dict[str, Any]: Обзор рынка
+        """
+        # Получаем рыночные данные
+        market_data = await self.get_market_data() or {}
+        
+        # Получаем топ монет
+        top_coins = await self.get_top_coins(20)
+        
+        # Разделяем на растущие и падающие
+        gainers = []
+        losers = []
+        
+        for coin in top_coins:
+            price_change = coin.get('price_change_percent_24h', 0)
+            
+            if price_change > 0:
+                gainers.append(coin)
+            else:
+                losers.append(coin)
+        
+        # Сортируем по изменению цены
+        gainers.sort(key=lambda x: x.get('price_change_percent_24h', 0), reverse=True)
+        losers.sort(key=lambda x: x.get('price_change_percent_24h', 0))
+        
+        # Формируем обзор рынка
+        overview = {
+            'total_market_cap': market_data.get('totalMarketCap', 0),
+            'total_volume_24h': market_data.get('total24hVolume', 0),
+            'btc_dominance': market_data.get('btcDominance', 0),
+            'top_gainers': gainers[:5],  # Топ-5 растущих
+            'top_losers': losers[:5],    # Топ-5 падающих
+            'timestamp': datetime.now()
+        }
+        
         return overview
 
 # Создаем глобальный экземпляр менеджера данных
