@@ -19,8 +19,6 @@ logging.basicConfig(
 )
 from dotenv import load_dotenv
 
-# Логирование уже настроено выше
-
 # Загрузка переменных окружения из файла .env
 load_dotenv()
 
@@ -64,6 +62,11 @@ async def main():
     # Инициализируем диспетчер сигналов
     signal_dispatcher = SignalDispatcher()
     signal_dispatcher.set_bot(bot)
+    
+    # Инициализируем менеджер данных
+    from crypto.data_sources.crypto_data_manager import get_data_manager
+    data_manager = get_data_manager()
+    await data_manager.start()
     
     # Инициализируем сервис уведомлений
     from crypto.notification.alert_service import AlertService
