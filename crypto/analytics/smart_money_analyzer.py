@@ -84,7 +84,9 @@ class SmartMoneyAnalyzer:
                     "max_signals_per_hour": 20,  # Было 10
                     "cooldown_per_pair": 60,  # Было 300
                     "whitelist_pairs": [
-                        "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"
+                        "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT", 
+                        "ADA/USDT", "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "MATIC/USDT",
+                        "LINK/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "SHIB/USDT"
                     ]
                 }
             }
@@ -137,11 +139,12 @@ class SmartMoneyAnalyzer:
                                 direction=direction,
                                 price=price,
                                 confidence=confidence,
-                                description=f"Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего.",
+                                description=f"[ТЕСТ] Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего.",
                                 metadata={
                                     'volume': float(price * 1000),  # Заглушка
                                     'volume_ma': float(price * 500),  # Заглушка
-                                    'ratio': 2.0  # Заглушка
+                                    'ratio': 2.0,  # Заглушка
+                                    'test_signal': True  # Помечаем как тестовый сигнал
                                 }
                             )
                             
@@ -428,18 +431,18 @@ class SmartMoneyAnalyzer:
                 
                 # Описание в зависимости от типа сигнала
                 if signal_type == SignalType.VOLUME_SPIKE:
-                    description = f"Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего"
+                    description = f"[ТЕСТ] Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего"
                 elif signal_type == SignalType.LARGE_ORDER:
                     if direction == SignalDirection.LONG:
-                        description = f"Крупные ордера на покупку {symbol}: объем покупок в {np.random.uniform(1.2, 3.0):.2f}x раз больше продаж"
+                        description = f"[ТЕСТ] Крупные ордера на покупку {symbol}: объем покупок в {np.random.uniform(1.2, 3.0):.2f}x раз больше продаж"
                     else:
-                        description = f"Крупные ордера на продажу {symbol}: объем продаж в {np.random.uniform(1.2, 3.0):.2f}x раз больше покупок"
+                        description = f"[ТЕСТ] Крупные ордера на продажу {symbol}: объем продаж в {np.random.uniform(1.2, 3.0):.2f}x раз больше покупок"
                 else:  # FUNDING_RATE
                     rate = np.random.uniform(-0.1, 0.1)
                     if direction == SignalDirection.LONG:
-                        description = f"Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для лонгов"
+                        description = f"[ТЕСТ] Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для лонгов"
                     else:
-                        description = f"Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для шортов"
+                        description = f"[ТЕСТ] Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для шортов"
                 
                 # Создаем тестовый сигнал
                 signal = CryptoSignal(
@@ -450,7 +453,7 @@ class SmartMoneyAnalyzer:
                     direction=direction,
                     price=price,
                     confidence=confidence,
-                    description=description,
+                    description=f"[ТЕСТ] {description}",
                     metadata={
                         'test_signal': True
                     }

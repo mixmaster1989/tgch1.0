@@ -433,15 +433,26 @@ async def callback_smart_money(callback: CallbackQuery):
         signals = await analyzer.get_smart_money_signals()
         
         if signals:
+            # Фильтруем сигналы с уверенностью меньше 55%
+            filtered_signals = [s for s in signals if s.confidence >= 0.55]
+            
+            # Если после фильтрации не осталось сигналов, берем исходные
+            if not filtered_signals:
+                filtered_signals = signals
+            
             # Форматируем сигналы для отображения
             signals_text = ""
-            for i, signal in enumerate(signals[:5]):  # Показываем только первые 5 сигналов
+            for i, signal in enumerate(filtered_signals[:10]):  # Показываем до 10 сигналов
                 pair = signal.pair
                 direction = "🟢 LONG" if signal.direction == SignalDirection.LONG else "🔴 SHORT"
                 confidence = int(signal.confidence * 100)
                 desc = signal.description.split('.')[0]  # Берем только первое предложение
                 
-                signals_text += f"• {pair}: {direction} ({confidence}% уверенность) - {desc}\n\n"
+                # Проверяем, является ли сигнал тестовым
+                is_test = signal.metadata.get('test_signal', False) or '[ТЕСТ]' in signal.description
+                test_marker = "🧪 " if is_test else ""
+                
+                signals_text += f"• {test_marker}{pair}: {direction} ({confidence}% уверенность) - {desc}\n\n"
             
             await callback.message.edit_text(
                 f"📈 *Smart Money Signals*\n\n"
