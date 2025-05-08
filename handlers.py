@@ -375,6 +375,7 @@ async def handle_contact(message: types.Message):
     """
     Обработчик для полученного контакта
     """
+    global ADMINS
     logger.info(f"Пользователь {message.from_user.id} отправил контакт")
     
     # Проверяем, что пользователь находится в состоянии ожидания контакта
@@ -405,7 +406,6 @@ async def handle_contact(message: types.Message):
             await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
             
             # Обновляем глобальную переменную
-            global ADMINS
             ADMINS = admins
         else:
             await message.answer("Произошла ошибка при сохранении конфигурации.")
@@ -430,6 +430,7 @@ async def handle_forwarded_message(message: types.Message):
     """
     Обработчик для пересланного сообщения
     """
+    global ADMINS
     logger.info(f"Пользователь {message.from_user.id} переслал сообщение")
     
     # Проверяем, что пользователь находится в состоянии ожидания контакта
@@ -461,7 +462,6 @@ async def handle_forwarded_message(message: types.Message):
                 await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
                 
                 # Обновляем глобальную переменную
-                global ADMINS
                 ADMINS = admins
             else:
                 await message.answer("Произошла ошибка при сохранении конфигурации.")
@@ -489,6 +489,7 @@ async def handle_admin_id_input(message: types.Message):
     """
     Обработчик для ввода ID администратора вручную
     """
+    global ADMINS
     logger.info(f"Пользователь {message.from_user.id} ввел ID администратора")
     
     # Проверяем, является ли введенный текст числом
@@ -532,7 +533,6 @@ async def handle_admin_id_input(message: types.Message):
             await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
             
             # Обновляем глобальную переменную
-            global ADMINS
             ADMINS = admins
         else:
             await message.answer("Произошла ошибка при сохранении конфигурации.")
@@ -884,6 +884,7 @@ async def callback_admin_remove(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("remove_admin_"))
 async def callback_remove_admin(callback: types.CallbackQuery):
+    global ADMINS
     admin_id = int(callback.data.split("_")[2])
     logger.info(f"Пользователь {callback.from_user.id} удаляет администратора {admin_id}")
     
@@ -898,6 +899,9 @@ async def callback_remove_admin(callback: types.CallbackQuery):
         # Сохраняем обновленный список администраторов
         config["admins"] = admins
         save_config(config)
+        
+        # Обновляем глобальную переменную
+        ADMINS = admins
         
         await callback.answer(f"Администратор {admin_id} удален")
     else:
