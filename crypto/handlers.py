@@ -353,6 +353,133 @@ async def callback_remove_coin(callback: CallbackQuery):
     # Перезагружаем список монет
     await callback_alerts_coins(callback)
 
+@router.callback_query(F.data == "crypto_market_overview")
+async def callback_market_overview(callback: CallbackQuery):
+    """
+    Обработчик для кнопки "Рыночный обзор"
+    """
+    user_id = callback.from_user.id
+    
+    await callback.answer("Загрузка рыночного обзора...")
+    
+    # Здесь будет код для получения рыночного обзора
+    # Пока просто заглушка
+    await callback.message.edit_text(
+        "📊 *Рыночный обзор криптовалют*\n\n"
+        "Общая капитализация: $1.2T\n"
+        "Доминирование BTC: 52.3%\n"
+        "Объем торгов (24ч): $48.5B\n\n"
+        "Топ растущих монет (24ч):\n"
+        "1. ETH - $2,345.67 (+5.2%)\n"
+        "2. SOL - $123.45 (+4.8%)\n"
+        "3. BNB - $345.67 (+3.5%)\n\n"
+        "Топ падающих монет (24ч):\n"
+        "1. XRP - $0.45 (-2.1%)\n"
+        "2. ADA - $0.32 (-1.8%)\n"
+        "3. DOT - $5.67 (-1.5%)",
+        reply_markup=InlineKeyboardBuilder().button(
+            text="🔙 Назад", callback_data="crypto_back_to_main"
+        ).as_markup(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "crypto_alerts")
+async def callback_crypto_alerts(callback: CallbackQuery):
+    """
+    Обработчик для кнопки "Уведомления"
+    """
+    user_id = callback.from_user.id
+    
+    # Подписываем пользователя на уведомления
+    await alert_service.subscribe_user(user_id, callback.message.chat.id)
+    
+    # Создаем клавиатуру
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔔 Включить уведомления", callback_data="crypto_alerts_enable")
+    builder.button(text="🔕 Отключить уведомления", callback_data="crypto_alerts_disable")
+    builder.button(text="⚙️ Настройки уведомлений", callback_data="crypto_alerts_settings")
+    builder.button(text="📋 Мои монеты", callback_data="crypto_alerts_coins")
+    builder.button(text="🧪 Тестовое уведомление", callback_data="crypto_alerts_test")
+    builder.button(text="🔙 Назад", callback_data="crypto_back_to_main")
+    builder.adjust(1)
+    
+    await callback.message.edit_text(
+        "📊 *Управление уведомлениями о криптовалютах*\n\n"
+        "Здесь вы можете настроить уведомления о важных событиях:\n"
+        "• Значительные изменения цены (>5% за час)\n"
+        "• Достижение психологических уровней цены\n"
+        "• Необычные всплески объема торгов\n\n"
+        "Выберите действие:",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "crypto_smart_money")
+async def callback_smart_money(callback: CallbackQuery):
+    """
+    Обработчик для кнопки "Smart Money"
+    """
+    await callback.answer("Загрузка данных Smart Money...")
+    
+    # Здесь будет код для получения данных Smart Money
+    # Пока просто заглушка
+    await callback.message.edit_text(
+        "📈 *Smart Money Signals*\n\n"
+        "Отслеживание активности крупных игроков на рынке:\n\n"
+        "• BTC: Крупные покупки на уровне $42,500\n"
+        "• ETH: Аккумуляция в диапазоне $2,300-2,400\n"
+        "• SOL: Увеличение открытых длинных позиций\n\n"
+        "Последнее обновление: сегодня, 12:30 UTC",
+        reply_markup=InlineKeyboardBuilder().button(
+            text="🔙 Назад", callback_data="crypto_back_to_main"
+        ).as_markup(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "crypto_search_coin")
+async def callback_search_coin(callback: CallbackQuery):
+    """
+    Обработчик для кнопки "Поиск монеты"
+    """
+    await callback.answer("Функция поиска монет будет доступна в следующем обновлении")
+    
+    # Возвращаемся в главное меню
+    await callback.message.edit_text(
+        "🪙 *Криптовалютный модуль*\n\n"
+        "Выберите действие из меню ниже:",
+        reply_markup=InlineKeyboardBuilder()
+            .button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
+            .button(text="🔔 Уведомления", callback_data="crypto_alerts")
+            .button(text="📈 Smart Money", callback_data="crypto_smart_money")
+            .button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
+            .adjust(1)
+            .as_markup(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "crypto_back_to_main")
+async def callback_back_to_main(callback: CallbackQuery):
+    """
+    Обработчик для кнопки "Назад" в криптомодуле
+    """
+    await callback.answer()
+    
+    # Возвращаемся в главное меню криптомодуля
+    await callback.message.edit_text(
+        "🪙 *Криптовалютный модуль*\n\n"
+        "Выберите действие из меню ниже:",
+        reply_markup=InlineKeyboardBuilder()
+            .button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
+            .button(text="🔔 Уведомления", callback_data="crypto_alerts")
+            .button(text="📈 Smart Money", callback_data="crypto_smart_money")
+            .button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
+            .adjust(1)
+            .as_markup(),
+        parse_mode="Markdown"
+    )
+
 def register_crypto_handlers(dp):
     """
     Регистрирует обработчики для криптомодуля
