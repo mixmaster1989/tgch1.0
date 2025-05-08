@@ -117,10 +117,23 @@ def get_cryptorank_api_key() -> str:
     Returns:
         str: API ключ
     """
+    # Пытаемся получить ключ из файла smart_money_config.yaml
+    try:
+        smart_money_config_path = Path(__file__).parent / "smart_money_config.yaml"
+        if smart_money_config_path.exists():
+            with open(smart_money_config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                if config and 'api' in config and 'cryptorank' in config['api'] and 'api_key' in config['api']['cryptorank']:
+                    logger.info("API ключ для Cryptorank получен из файла конфигурации")
+                    return config['api']['cryptorank']['api_key']
+    except Exception as e:
+        logger.error(f"Ошибка при чтении API ключа из файла конфигурации: {e}")
+    
+    # Если не удалось получить из файла, пытаемся из переменных окружения
     api_key = os.getenv("CRYPTORANK_API_KEY")
     
     if not api_key:
-        logger.warning("API ключ для Cryptorank не найден в переменных окружения")
+        logger.warning("API ключ для Cryptorank не найден ни в файле конфигурации, ни в переменных окружения")
         return ""
     
     return api_key
