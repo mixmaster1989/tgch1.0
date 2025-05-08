@@ -137,20 +137,20 @@ class SmartMoneyAnalyzer:
                             # Генерируем уровни для торговли
                             entry_price = price
                             
-                            # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
-                            # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                            # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+                            # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
                             if direction == SignalDirection.LONG:
-                                stop_loss = price * (1 - np.random.uniform(0.02, 0.05))
-                                take_profit1 = price * (1 + np.random.uniform(0.03, 0.07))
-                                take_profit2 = price * (1 + np.random.uniform(0.08, 0.15))
+                                stop_loss = price * (1 - np.random.uniform(0.005, 0.02))
+                                take_profit1 = price * (1 + np.random.uniform(0.01, 0.03))
+                                take_profit2 = price * (1 + np.random.uniform(0.03, 0.05))
                                 risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                                timeframe = "4h-1d"
+                                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                             else:
-                                stop_loss = price * (1 + np.random.uniform(0.02, 0.05))
-                                take_profit1 = price * (1 - np.random.uniform(0.03, 0.07))
-                                take_profit2 = price * (1 - np.random.uniform(0.08, 0.15))
+                                stop_loss = price * (1 + np.random.uniform(0.005, 0.02))
+                                take_profit1 = price * (1 - np.random.uniform(0.01, 0.03))
+                                take_profit2 = price * (1 - np.random.uniform(0.03, 0.05))
                                 risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                                timeframe = "4h-1d"
+                                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                             
                             # Создаем расширенное описание с торговыми рекомендациями
                             volume_ratio = np.random.uniform(1.1, 3.0)
@@ -223,20 +223,20 @@ class SmartMoneyAnalyzer:
                     # Генерируем уровни для торговли
                     entry_price = current_price
                     
-                    # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
-                    # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                    # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+                    # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
                     if direction == SignalDirection.LONG:
-                        stop_loss = current_price * (1 - np.random.uniform(0.02, 0.05))
-                        take_profit1 = current_price * (1 + np.random.uniform(0.03, 0.07))
-                        take_profit2 = current_price * (1 + np.random.uniform(0.08, 0.15))
+                        stop_loss = current_price * (1 - np.random.uniform(0.005, 0.02))
+                        take_profit1 = current_price * (1 + np.random.uniform(0.01, 0.03))
+                        take_profit2 = current_price * (1 + np.random.uniform(0.03, 0.05))
                         risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                        timeframe = "4h-1d" if last_volume / last_volume_ma > 2.0 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                     else:
-                        stop_loss = current_price * (1 + np.random.uniform(0.02, 0.05))
-                        take_profit1 = current_price * (1 - np.random.uniform(0.03, 0.07))
-                        take_profit2 = current_price * (1 - np.random.uniform(0.08, 0.15))
+                        stop_loss = current_price * (1 + np.random.uniform(0.005, 0.02))
+                        take_profit1 = current_price * (1 - np.random.uniform(0.01, 0.03))
+                        take_profit2 = current_price * (1 - np.random.uniform(0.03, 0.05))
                         risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                        timeframe = "4h-1d" if last_volume / last_volume_ma > 2.0 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                     
                     # Создаем расширенное описание с торговыми рекомендациями
                     volume_ratio = last_volume / last_volume_ma
@@ -357,12 +357,12 @@ class SmartMoneyAnalyzer:
                         except (TypeError, ValueError):
                             entry_price = 1000.0  # Значение по умолчанию
                         
-                        # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
-                        stop_loss = entry_price * (1 - np.random.uniform(0.02, 0.05))
-                        take_profit1 = entry_price * (1 + np.random.uniform(0.03, 0.07))
-                        take_profit2 = entry_price * (1 + np.random.uniform(0.08, 0.15))
+                        # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+                        stop_loss = entry_price * (1 - np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 + np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 + np.random.uniform(0.03, 0.05))
                         risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                        timeframe = "4h-1d" if buy_sell_ratio > imbalance_threshold * 1.5 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                         
                         # Генерируем ссылку на TradingView
                         from .tradingview_helper import generate_tradingview_link
@@ -406,12 +406,12 @@ class SmartMoneyAnalyzer:
                         except (TypeError, ValueError):
                             entry_price = 1000.0  # Значение по умолчанию
                         
-                        # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
-                        stop_loss = entry_price * (1 + np.random.uniform(0.02, 0.05))
-                        take_profit1 = entry_price * (1 - np.random.uniform(0.03, 0.07))
-                        take_profit2 = entry_price * (1 - np.random.uniform(0.08, 0.15))
+                        # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
+                        stop_loss = entry_price * (1 + np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 - np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 - np.random.uniform(0.03, 0.05))
                         risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                        timeframe = "4h-1d" if sell_buy_ratio > imbalance_threshold * 1.5 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                         
                         # Генерируем ссылку на TradingView
                         from .tradingview_helper import generate_tradingview_link
@@ -496,20 +496,20 @@ class SmartMoneyAnalyzer:
                     except (TypeError, ValueError):
                         entry_price = 1000.0  # Значение по умолчанию
                     
-                    # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
-                    # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                    # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+                    # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
                     if direction == SignalDirection.LONG:
-                        stop_loss = entry_price * (1 - np.random.uniform(0.02, 0.05))
-                        take_profit1 = entry_price * (1 + np.random.uniform(0.03, 0.07))
-                        take_profit2 = entry_price * (1 + np.random.uniform(0.08, 0.15))
+                        stop_loss = entry_price * (1 - np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 + np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 + np.random.uniform(0.03, 0.05))
                         risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                        timeframe = "4h-1d" if abs(funding_rate) > alert_threshold * 2 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                     else:
-                        stop_loss = entry_price * (1 + np.random.uniform(0.02, 0.05))
-                        take_profit1 = entry_price * (1 - np.random.uniform(0.03, 0.07))
-                        take_profit2 = entry_price * (1 - np.random.uniform(0.08, 0.15))
+                        stop_loss = entry_price * (1 + np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 - np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 - np.random.uniform(0.03, 0.05))
                         risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                        timeframe = "4h-1d" if abs(funding_rate) > alert_threshold * 2 else "1h-4h"
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
                     
                     # Генерируем ссылку на TradingView
                     from .tradingview_helper import generate_tradingview_link
