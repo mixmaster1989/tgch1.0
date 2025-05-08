@@ -37,6 +37,27 @@ def set_bot(bot):
     alert_service.set_bot(bot)
     logger.info("Установлен бот для обработчиков криптомодуля")
 
+@router.message(Command("crypto_mode"))
+async def cmd_crypto_mode(message: Message):
+    """
+    Обработчик команды /crypto_mode
+    Показывает главное меню криптомодуля
+    """
+    # Создаем клавиатуру
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
+    builder.button(text="🔔 Уведомления", callback_data="crypto_alerts")
+    builder.button(text="📈 Smart Money", callback_data="crypto_smart_money")
+    builder.button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
+    builder.adjust(1)
+    
+    await message.answer(
+        "🪙 *Криптовалютный модуль*\n\n"
+        "Выберите действие из меню ниже:",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
+
 @router.message(Command("crypto_alerts"))
 async def cmd_crypto_alerts(message: Message):
     """
