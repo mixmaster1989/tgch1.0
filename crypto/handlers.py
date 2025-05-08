@@ -434,63 +434,72 @@ async def callback_smart_money(callback: CallbackQuery):
         signals = await analyzer.get_smart_money_signals()
         
         if signals:
-            # Фильтруем сигналы с уверенностью меньше 55%
-            filtered_signals = [s for s in signals if s.confidence >= 0.55]
-            
-            # Если после фильтрации не осталось сигналов, берем исходные
-            if not filtered_signals:
-                filtered_signals = signals
-            
             # Форматируем сигналы для отображения
             signals_text = ""
             
             # Создаем клавиатуру для TradingView ссылок
             tv_builder = InlineKeyboardBuilder()
             
-            for i, signal in enumerate(filtered_signals[:10]):  # Показываем до 10 сигналов
+            for i, signal in enumerate(signals[:10]):  # Показываем до 10 сигналов
                 pair = signal.pair
                 direction = "🟢 LONG" if signal.direction == SignalDirection.LONG else "🔴 SHORT"
                 confidence = int(signal.confidence * 100)
                 
                 # Проверяем, является ли сигнал тестовым
-                is_test = signal.metadata.get('test_signal', False) or '[ТЕСТ]' in signal.description
+                is_test = signal.metadata.get('test_signal', False) or '[ТЕСТ]' in str(signal.description)
                 test_marker = "🧪 " if is_test else ""
                 
-                # Получаем данные для торговли
-                entry_price = signal.metadata.get('entry_price', signal.price)
-                stop_loss = signal.metadata.get('stop_loss', 0)
-                take_profit1 = signal.metadata.get('take_profit1', 0)
-                take_profit2 = signal.metadata.get('take_profit2', 0)
-                risk_reward = signal.metadata.get('risk_reward', 0)
-                timeframe = signal.metadata.get('timeframe', 'н/д')
+                # Получаем данные для торговли с безопасным приведением типов
+                try:
+                    entry_price = float(signal.metadata.get('entry_price', signal.price))
+                except (TypeError, ValueError):
+                    entry_price = float(signal.price)
+                
+                try:
+                    stop_loss = float(signal.metadata.get('stop_loss', 0))
+                except (TypeError, ValueError):
+                    stop_loss = 0.0
+                
+                try:
+                    take_profit1 = float(signal.metadata.get('take_profit1', 0))
+                except (TypeError, ValueError):
+                    take_profit1 = 0.0
+                
+                try:
+                    take_profit2 = float(signal.metadata.get('take_profit2', 0))
+                except (TypeError, ValueError):
+                    take_profit2 = 0.0
+                
+                try:
+                    risk_reward = float(signal.metadata.get('risk_reward', 0))
+                except (TypeError, ValueError):
+                    risk_reward = 0.0
+                
+                timeframe = str(signal.metadata.get('timeframe', 'н/д'))
                 
                 # Добавляем номер сигнала для ссылки на TradingView
                 signal_num = i + 1
                 
-                # Форматируем полное описание сигнала
-                signals_text += (
-                    f"• {signal_num}. {test_marker}{pair}: {direction} ({confidence}% уверенность)\n"
-                )
+                # Форматируем полное описание сигнала с безопасным форматированием
+                signals_text += f"• {signal_num}. {test_marker}{pair}: {direction} ({confidence}% уверенность)\n"
                 
                 # Добавляем детали только если они есть
-                if isinstance(entry_price, (int, float)):
+                if entry_price > 0:
                     signals_text += f"  📈 Вход: ${entry_price:.2f}\n"
-                else:
-                    signals_text += f"  📈 Вход: ${signal.price:.2f}\n"
                     
-                if isinstance(stop_loss, (int, float)) and stop_loss > 0:
+                if stop_loss > 0:
                     signals_text += f"  🛑 Стоп-лосс: ${stop_loss:.2f}\n"
                     
-                if isinstance(take_profit1, (int, float)) and take_profit1 > 0:
-                    if isinstance(take_profit2, (int, float)) and take_profit2 > 0:
+                if take_profit1 > 0:
+                    if take_profit2 > 0:
                         signals_text += f"  🎯 Цели: ${take_profit1:.2f} и ${take_profit2:.2f}\n"
                     else:
                         signals_text += f"  🎯 Цель: ${take_profit1:.2f}\n"
                         
-                if isinstance(risk_reward, (int, float)) and risk_reward > 0:
-                    signals_text += f"  ⚖️ Риск/Прибыль: 1:{risk_reward}\n"
+                if risk_reward > 0:
+                    signals_text += f"  ⚖️ Риск/Прибыль: 1:{risk_reward:.2f}\n"
                     
-                if isinstance(timeframe, str) and timeframe != 'н/д':
+                if timeframe and timeframe != 'н/д':
                     signals_text += f"  ⏱️ Горизонт: {timeframe}\n"
                     
                 signals_text += "\n"

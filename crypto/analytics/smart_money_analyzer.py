@@ -527,6 +527,27 @@ class SmartMoneyAnalyzer:
                     else:
                         description = f"[ТЕСТ] Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для шортов"
                 
+                # Генерируем уровни для торговли
+                try:
+                    entry_price = float(price)
+                except (TypeError, ValueError):
+                    entry_price = 1000.0  # Значение по умолчанию
+                
+                # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
+                # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                if direction == SignalDirection.LONG:
+                    stop_loss = entry_price * (1 - np.random.uniform(0.02, 0.05))
+                    take_profit1 = entry_price * (1 + np.random.uniform(0.03, 0.07))
+                    take_profit2 = entry_price * (1 + np.random.uniform(0.08, 0.15))
+                    risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                    timeframe = "4h-1d" if np.random.random() > 0.5 else "1h-4h"
+                else:
+                    stop_loss = entry_price * (1 + np.random.uniform(0.02, 0.05))
+                    take_profit1 = entry_price * (1 - np.random.uniform(0.03, 0.07))
+                    take_profit2 = entry_price * (1 - np.random.uniform(0.08, 0.15))
+                    risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                    timeframe = "4h-1d" if np.random.random() > 0.5 else "1h-4h"
+                
                 # Генерируем ссылку на TradingView
                 from .tradingview_helper import generate_tradingview_link
                 tv_link = generate_tradingview_link(pair)
@@ -543,7 +564,13 @@ class SmartMoneyAnalyzer:
                     description=description,
                     metadata={
                         'test_signal': True,
-                        'tradingview_link': tv_link  # Добавляем ссылку на TradingView
+                        'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
+                        'entry_price': float(entry_price),
+                        'stop_loss': float(stop_loss),
+                        'take_profit1': float(take_profit1),
+                        'take_profit2': float(take_profit2),
+                        'risk_reward': float(risk_reward),
+                        'timeframe': timeframe
                     }
                 )
                 
@@ -610,7 +637,11 @@ class SmartMoneyAnalyzer:
         if not coin_data or 'price' not in coin_data:
             return {'bids': [], 'asks': []}
         
-        price = coin_data['price']
+        # Убедимся, что price - это число
+        try:
+            price = float(coin_data['price'])
+        except (TypeError, ValueError):
+            price = 1000.0  # Значение по умолчанию
         
         # Генерируем случайные ордера
         bids = []  # (price, amount, total_usd)
@@ -618,46 +649,46 @@ class SmartMoneyAnalyzer:
         
         # Генерируем 10 ордеров на покупку
         for i in range(10):
-            bid_price = price * (1 - 0.001 * (i + 1))
-            amount = np.random.uniform(1, 100)
-            total_usd = bid_price * amount
+            bid_price = float(price * (1 - 0.001 * (i + 1)))
+            amount = float(np.random.uniform(1, 100))
+            total_usd = float(bid_price * amount)
             bids.append((bid_price, amount, total_usd))
         
         # Генерируем 10 ордеров на продажу
         for i in range(10):
-            ask_price = price * (1 + 0.001 * (i + 1))
-            amount = np.random.uniform(1, 100)
-            total_usd = ask_price * amount
+            ask_price = float(price * (1 + 0.001 * (i + 1)))
+            amount = float(np.random.uniform(1, 100))
+            total_usd = float(ask_price * amount)
             asks.append((ask_price, amount, total_usd))
         
         # Добавляем один крупный ордер с вероятностью 80% (было 20%)
         if np.random.random() < 0.8:
             if np.random.random() < 0.5:
                 # Крупный ордер на покупку
-                bid_price = price * 0.99
-                amount = np.random.uniform(100, 1000)
-                total_usd = bid_price * amount
+                bid_price = float(price * 0.99)
+                amount = float(np.random.uniform(100, 1000))
+                total_usd = float(bid_price * amount)
                 bids.append((bid_price, amount, total_usd))
             else:
                 # Крупный ордер на продажу
-                ask_price = price * 1.01
-                amount = np.random.uniform(100, 1000)
-                total_usd = ask_price * amount
+                ask_price = float(price * 1.01)
+                amount = float(np.random.uniform(100, 1000))
+                total_usd = float(ask_price * amount)
                 asks.append((ask_price, amount, total_usd))
         
         # Добавляем еще один крупный ордер для создания дисбаланса с вероятностью 60%
         if np.random.random() < 0.6:
             if np.random.random() < 0.5:
                 # Еще один крупный ордер на покупку для создания дисбаланса
-                bid_price = price * 0.98
-                amount = np.random.uniform(200, 2000)
-                total_usd = bid_price * amount
+                bid_price = float(price * 0.98)
+                amount = float(np.random.uniform(200, 2000))
+                total_usd = float(bid_price * amount)
                 bids.append((bid_price, amount, total_usd))
             else:
                 # Еще один крупный ордер на продажу для создания дисбаланса
-                ask_price = price * 1.02
-                amount = np.random.uniform(200, 2000)
-                total_usd = ask_price * amount
+                ask_price = float(price * 1.02)
+                amount = float(np.random.uniform(200, 2000))
+                total_usd = float(ask_price * amount)
                 asks.append((ask_price, amount, total_usd))
         
         return {'bids': bids, 'asks': asks}
