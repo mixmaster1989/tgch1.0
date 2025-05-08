@@ -7,6 +7,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from datetime import datetime
 
 from .models import CryptoSignal, SignalType, SignalDirection
 from .notification.alert_service import AlertService
@@ -469,12 +470,30 @@ async def callback_smart_money(callback: CallbackQuery):
                 # Форматируем полное описание сигнала
                 signals_text += (
                     f"• {signal_num}. {test_marker}{pair}: {direction} ({confidence}% уверенность)\n"
-                    f"  📈 Вход: ${entry_price:.2f}\n"
-                    f"  🛑 Стоп-лосс: ${stop_loss:.2f}\n"
-                    f"  🎯 Цели: ${take_profit1:.2f} и ${take_profit2:.2f}\n"
-                    f"  ⚖️ Риск/Прибыль: 1:{risk_reward}\n"
-                    f"  ⏱️ Горизонт: {timeframe}\n\n"
                 )
+                
+                # Добавляем детали только если они есть
+                if isinstance(entry_price, (int, float)):
+                    signals_text += f"  📈 Вход: ${entry_price:.2f}\n"
+                else:
+                    signals_text += f"  📈 Вход: ${signal.price:.2f}\n"
+                    
+                if isinstance(stop_loss, (int, float)) and stop_loss > 0:
+                    signals_text += f"  🛑 Стоп-лосс: ${stop_loss:.2f}\n"
+                    
+                if isinstance(take_profit1, (int, float)) and take_profit1 > 0:
+                    if isinstance(take_profit2, (int, float)) and take_profit2 > 0:
+                        signals_text += f"  🎯 Цели: ${take_profit1:.2f} и ${take_profit2:.2f}\n"
+                    else:
+                        signals_text += f"  🎯 Цель: ${take_profit1:.2f}\n"
+                        
+                if isinstance(risk_reward, (int, float)) and risk_reward > 0:
+                    signals_text += f"  ⚖️ Риск/Прибыль: 1:{risk_reward}\n"
+                    
+                if isinstance(timeframe, str) and timeframe != 'н/д':
+                    signals_text += f"  ⏱️ Горизонт: {timeframe}\n"
+                    
+                signals_text += "\n"
                 
                 # Добавляем кнопку для TradingView, если есть ссылка
                 tv_link = signal.metadata.get('tradingview_link')
@@ -496,17 +515,6 @@ async def callback_smart_money(callback: CallbackQuery):
                 f"{signals_text}"
                 f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M')} UTC",
                 reply_markup=tv_builder.as_markup(),
-                parse_mode="Markdown"
-            )
-            
-            await callback.message.edit_text(
-                f"📈 *Smart Money Signals*\n\n"
-                f"Отслеживание активности крупных игроков на рынке:\n\n"
-                f"{signals_text}"
-                f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M')} UTC",
-                reply_markup=InlineKeyboardBuilder().button(
-                    text="🔙 Назад", callback_data="crypto_back_to_main"
-                ).as_markup(),
                 parse_mode="Markdown"
             )
         else:
