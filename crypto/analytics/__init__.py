@@ -1,7 +1,7 @@
 """
-Пакет для аналитических модулей криптомодуля
+Пакет для аналитических модулей криптовалют
 """
 
-from .market_analyzer import MarketAnalyzer
-from .crypto_rank_analyzer import CryptoRankAnalyzer
-from .mock_signals import MockSignalGenerator
+from .smart_money_analyzer import SmartMoneyAnalyzer, get_smart_money_analyzer
+
+__all__ = ['SmartMoneyAnalyzer', 'get_smart_money_analyzer']

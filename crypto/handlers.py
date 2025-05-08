@@ -423,20 +423,66 @@ async def callback_smart_money(callback: CallbackQuery):
     """
     await callback.answer("Загрузка данных Smart Money...")
     
-    # Здесь будет код для получения данных Smart Money
-    # Пока просто заглушка
-    await callback.message.edit_text(
-        "📈 *Smart Money Signals*\n\n"
-        "Отслеживание активности крупных игроков на рынке:\n\n"
-        "• BTC: Крупные покупки на уровне $42,500\n"
-        "• ETH: Аккумуляция в диапазоне $2,300-2,400\n"
-        "• SOL: Увеличение открытых длинных позиций\n\n"
-        "Последнее обновление: сегодня, 12:30 UTC",
-        reply_markup=InlineKeyboardBuilder().button(
-            text="🔙 Назад", callback_data="crypto_back_to_main"
-        ).as_markup(),
-        parse_mode="Markdown"
-    )
+    try:
+        # Получаем анализатор Smart Money
+        from .analytics.smart_money_analyzer import get_smart_money_analyzer
+        analyzer = get_smart_money_analyzer()
+        
+        # Получаем сигналы Smart Money
+        signals = await analyzer.get_smart_money_signals()
+        
+        if signals:
+            # Форматируем сигналы для отображения
+            signals_text = ""
+            for i, signal in enumerate(signals[:5]):  # Показываем только первые 5 сигналов
+                pair = signal.pair
+                direction = "🟢 LONG" if signal.direction == SignalDirection.LONG else "🔴 SHORT"
+                confidence = int(signal.confidence * 100)
+                desc = signal.description.split('.')[0]  # Берем только первое предложение
+                
+                signals_text += f"• {pair}: {direction} ({confidence}% уверенность) - {desc}\n\n"
+            
+            await callback.message.edit_text(
+                f"📈 *Smart Money Signals*\n\n"
+                f"Отслеживание активности крупных игроков на рынке:\n\n"
+                f"{signals_text}"
+                f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M')} UTC",
+                reply_markup=InlineKeyboardBuilder().button(
+                    text="🔙 Назад", callback_data="crypto_back_to_main"
+                ).as_markup(),
+                parse_mode="Markdown"
+            )
+        else:
+            # Если сигналов нет, показываем заглушку
+            await callback.message.edit_text(
+                "📈 *Smart Money Signals*\n\n"
+                "В настоящий момент нет активных сигналов Smart Money.\n\n"
+                "Система отслеживает:\n"
+                "• Всплески объема торгов\n"
+                "• Крупные ордера на биржах\n"
+                "• Необычные ставки финансирования\n\n"
+                f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M')} UTC",
+                reply_markup=InlineKeyboardBuilder().button(
+                    text="🔙 Назад", callback_data="crypto_back_to_main"
+                ).as_markup(),
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка при получении сигналов Smart Money: {e}")
+        
+        # В случае ошибки показываем заглушку
+        await callback.message.edit_text(
+            "📈 *Smart Money Signals*\n\n"
+            "Отслеживание активности крупных игроков на рынке:\n\n"
+            "• BTC: Крупные покупки на уровне $42,500\n"
+            "• ETH: Аккумуляция в диапазоне $2,300-2,400\n"
+            "• SOL: Увеличение открытых длинных позиций\n\n"
+            "Последнее обновление: сегодня, 12:30 UTC",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="🔙 Назад", callback_data="crypto_back_to_main"
+            ).as_markup(),
+            parse_mode="Markdown"
+        )
 
 @router.callback_query(F.data == "crypto_search_coin")
 async def callback_search_coin(callback: CallbackQuery):

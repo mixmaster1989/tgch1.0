@@ -9,6 +9,8 @@ from datetime import datetime
 
 from .models import CryptoSignal, SignalType, SignalDirection
 from .data_sources.crypto_data_manager import get_data_manager
+from .analytics.smart_money_analyzer import get_smart_money_analyzer
+from .user_settings.user_preferences import UserPreferences
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.signal_dispatcher')
@@ -34,6 +36,12 @@ class SignalDispatcher:
         
         # Получаем менеджер данных
         self.data_manager = get_data_manager()
+        
+        # Получаем анализатор Smart Money
+        self.smart_money_analyzer = get_smart_money_analyzer()
+        
+        # Получаем менеджер пользовательских настроек
+        self.user_preferences = UserPreferences()
         
         logger.info("Инициализирован диспетчер сигналов")
     
@@ -95,14 +103,11 @@ class SignalDispatcher:
         try:
             while self._running:
                 try:
-                    # Получаем данные о рынке
-                    market_overview = await self.data_manager.get_market_overview()
-                    
-                    # Анализируем данные и генерируем сигналы
-                    signals = await self._generate_signals(market_overview)
+                    # Получаем сигналы Smart Money
+                    signals = await self.smart_money_analyzer.get_smart_money_signals()
                     
                     if signals:
-                        logger.info(f"Сгенерировано {len(signals)} сигналов")
+                        logger.info(f"Получено {len(signals)} сигналов Smart Money")
                         
                         # Отправляем сигналы подписчикам
                         await self._send_signals_to_subscribers(signals)
@@ -118,66 +123,6 @@ class SignalDispatcher:
             logger.info("Мониторинг отменен")
         except Exception as e:
             logger.error(f"Критическая ошибка в мониторинге: {e}", exc_info=True)
-    
-    async def _generate_signals(self, market_overview: Dict[str, Any]) -> List[CryptoSignal]:
-        """
-        Генерирует сигналы на основе данных о рынке
-        
-        Args:
-            market_overview: Обзор рынка
-            
-        Returns:
-            List[CryptoSignal]: Список сигналов
-        """
-        signals = []
-        
-        # Генерируем сигналы для топ растущих монет
-        for coin in market_overview['top_gainers'][:3]:  # Берем только топ-3
-            symbol = coin.get('symbol', '')
-            price = coin.get('price', 0)
-            change = coin.get('price_change_percent_24h', 0)
-            
-            if change > 10:  # Если рост более 10%
-                signal = CryptoSignal(
-                    id=f"{symbol}-{datetime.now().timestamp()}",
-                    pair=f"{symbol}/USDT",
-                    timestamp=datetime.now(),
-                    signal_type=SignalType.VOLUME_SPIKE,
-                    direction=SignalDirection.LONG,
-                    price=price,
-                    confidence=min(change / 20, 1.0),  # Максимум 1.0 при росте на 20%
-                    description=f"Значительный рост {symbol}: +{change:.2f}% за 24 часа.",
-                    metadata={
-                        'price_change_percent': change,
-                        'volume': coin.get('volume24h', 0)
-                    }
-                )
-                signals.append(signal)
-        
-        # Генерируем сигналы для топ падающих монет
-        for coin in market_overview['top_losers'][:3]:  # Берем только топ-3
-            symbol = coin.get('symbol', '')
-            price = coin.get('price', 0)
-            change = coin.get('price_change_percent_24h', 0)
-            
-            if change < -10:  # Если падение более 10%
-                signal = CryptoSignal(
-                    id=f"{symbol}-{datetime.now().timestamp()}",
-                    pair=f"{symbol}/USDT",
-                    timestamp=datetime.now(),
-                    signal_type=SignalType.VOLUME_SPIKE,
-                    direction=SignalDirection.SHORT,
-                    price=price,
-                    confidence=min(abs(change) / 20, 1.0),  # Максимум 1.0 при падении на 20%
-                    description=f"Значительное падение {symbol}: {change:.2f}% за 24 часа.",
-                    metadata={
-                        'price_change_percent': change,
-                        'volume': coin.get('volume24h', 0)
-                    }
-                )
-                signals.append(signal)
-        
-        return signals
     
     async def _send_signals_to_subscribers(self, signals: List[CryptoSignal]):
         """
@@ -208,6 +153,10 @@ class SignalDispatcher:
                 if coin_symbol in watched_coins:
                     # Проверяем настройки уведомлений
                     if signal.signal_type == SignalType.VOLUME_SPIKE and settings['notifications']['volume_spikes']:
+                        user_signals.append(signal)
+                    elif signal.signal_type == SignalType.LARGE_ORDER and settings['notifications']['volume_spikes']:
+                        user_signals.append(signal)
+                    elif signal.signal_type == SignalType.FUNDING_RATE and settings['notifications']['volume_spikes']:
                         user_signals.append(signal)
             
             # Отправляем сигналы пользователю
@@ -245,14 +194,8 @@ class SignalDispatcher:
         """
         try:
             if settings is None:
-                # Настройки по умолчанию
-                settings = {
-                    'notifications': {
-                        'price_change': True,
-                        'psychological_levels': True,
-                        'volume_spikes': True
-                    }
-                }
+                # Получаем настройки пользователя
+                settings = await self.user_preferences.get_user_settings(user_id)
             
             # Добавляем пользователя в список подписчиков
             self._subscribers[user_id] = {
@@ -298,11 +241,15 @@ class SignalDispatcher:
             bool: True, если настройки успешно обновлены
         """
         try:
-            if user_id in self._subscribers:
+            # Сохраняем настройки в базе данных
+            success = await self.user_preferences.save_user_settings(user_id, settings)
+            
+            # Обновляем настройки в списке подписчиков
+            if success and user_id in self._subscribers:
                 self._subscribers[user_id]['settings'] = settings
                 logger.info(f"Обновлены настройки для пользователя {user_id}")
-                return True
-            return False
+            
+            return success
         except Exception as e:
             logger.error(f"Ошибка при обновлении настроек пользователя {user_id}: {e}", exc_info=True)
             return False

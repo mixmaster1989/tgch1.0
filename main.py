@@ -62,6 +62,7 @@ async def main():
     # Инициализируем диспетчер сигналов
     signal_dispatcher = SignalDispatcher()
     signal_dispatcher.set_bot(bot)
+    await signal_dispatcher.start()
     
     # Инициализируем менеджер данных
     from crypto.data_sources.crypto_data_manager import get_data_manager
