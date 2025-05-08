@@ -139,8 +139,8 @@ class SmartMoneyAnalyzer:
                                 confidence=confidence,
                                 description=f"Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего.",
                                 metadata={
-                                    'volume': price * 1000,  # Заглушка
-                                    'volume_ma': price * 500,  # Заглушка
+                                    'volume': float(price * 1000),  # Заглушка
+                                    'volume_ma': float(price * 500),  # Заглушка
                                     'ratio': 2.0  # Заглушка
                                 }
                             )
@@ -177,13 +177,13 @@ class SmartMoneyAnalyzer:
                         timestamp=datetime.now(),
                         signal_type=SignalType.VOLUME_SPIKE,
                         direction=direction,
-                        price=df['price'].iloc[-1],
+                        price=float(df['price'].iloc[-1]),
                         confidence=min(last_volume / last_volume_ma / threshold, 1.0),
                         description=f"Всплеск объема для {symbol}: объем в {last_volume / last_volume_ma:.2f}x раз выше среднего.",
                         metadata={
-                            'volume': last_volume,
-                            'volume_ma': last_volume_ma,
-                            'ratio': last_volume / last_volume_ma
+                            'volume': float(last_volume),
+                            'volume_ma': float(last_volume_ma),
+                            'ratio': float(last_volume / last_volume_ma)
                         }
                     )
                     
@@ -244,14 +244,14 @@ class SmartMoneyAnalyzer:
                 
                 for order in orderbook['bids']:  # Ордера на покупку
                     price, amount, total_usd = order
-                    total_btc = total_usd / btc_price
+                    total_btc = float(total_usd) / float(btc_price)
                     
                     if total_btc >= min_order_size_btc:
                         large_buy_orders.append((price, amount, total_btc))
                 
                 for order in orderbook['asks']:  # Ордера на продажу
                     price, amount, total_usd = order
-                    total_btc = total_usd / btc_price
+                    total_btc = float(total_usd) / float(btc_price)
                     
                     if total_btc >= min_order_size_btc:
                         large_sell_orders.append((price, amount, total_btc))
@@ -276,9 +276,9 @@ class SmartMoneyAnalyzer:
                             confidence=min(buy_sell_ratio / imbalance_threshold, 1.0),
                             description=f"Крупные ордера на покупку {symbol}: объем покупок в {buy_sell_ratio:.2f}x раз больше продаж.",
                             metadata={
-                                'buy_volume_btc': total_buy_volume_btc,
-                                'sell_volume_btc': total_sell_volume_btc,
-                                'ratio': buy_sell_ratio
+                                'buy_volume_btc': float(total_buy_volume_btc),
+                                'sell_volume_btc': float(total_sell_volume_btc),
+                                'ratio': float(buy_sell_ratio)
                             }
                         )
                         
@@ -300,9 +300,9 @@ class SmartMoneyAnalyzer:
                             confidence=min(sell_buy_ratio / imbalance_threshold, 1.0),
                             description=f"Крупные ордера на продажу {symbol}: объем продаж в {sell_buy_ratio:.2f}x раз больше покупок.",
                             metadata={
-                                'buy_volume_btc': total_buy_volume_btc,
-                                'sell_volume_btc': total_sell_volume_btc,
-                                'ratio': sell_buy_ratio
+                                'buy_volume_btc': float(total_buy_volume_btc),
+                                'sell_volume_btc': float(total_sell_volume_btc),
+                                'ratio': float(sell_buy_ratio)
                             }
                         )
                         
@@ -367,8 +367,8 @@ class SmartMoneyAnalyzer:
                         confidence=min(abs(funding_rate) / alert_threshold, 1.0),
                         description=f"Необычная ставка финансирования для {symbol}: {funding_rate:.2%}. {'Благоприятно для лонгов' if funding_rate < 0 else 'Благоприятно для шортов'}.",
                         metadata={
-                            'funding_rate': funding_rate,
-                            'threshold': alert_threshold,
+                            'funding_rate': float(funding_rate),
+                            'threshold': float(alert_threshold),
                             'exchange': funding_data['exchange']
                         }
                     )

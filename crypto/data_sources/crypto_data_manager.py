@@ -5,6 +5,7 @@
 
 import logging
 import asyncio
+import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -74,8 +75,9 @@ class CryptoDataManager:
         Фоновый процесс для обновления данных
         """
         try:
-            # Сначала обновляем данные сразу
-            await self._update_data()
+            # Не обновляем данные сразу при запуске, чтобы не тратить API запросы
+            # await self._update_data()
+            logger.info("Фоновое обновление данных запущено, первое обновление через 1 час")
             
             while self._updating:
                 # Ждем 1 час перед следующим обновлением
@@ -146,15 +148,53 @@ class CryptoDataManager:
             logger.info(f"Получение {limit} монет из базы данных")
             return await self.db.get_coins(limit, offset)
         
-        # Иначе получаем данные из API
-        logger.info(f"Получение {limit} монет из API")
-        coins = await self.api.get_coins(limit, offset)
+        # Иначе генерируем заглушку для монет
+        logger.info(f"Генерация заглушки для {limit} монет")
+        mock_coins = []
         
-        # Если получили данные из API, сохраняем их в базу
-        if coins:
-            await self.db.save_coins(coins)
+        # Список популярных монет
+        popular_coins = [
+            {"symbol": "BTC", "name": "Bitcoin", "price": 50000.0},
+            {"symbol": "ETH", "name": "Ethereum", "price": 3000.0},
+            {"symbol": "BNB", "name": "Binance Coin", "price": 400.0},
+            {"symbol": "SOL", "name": "Solana", "price": 100.0},
+            {"symbol": "XRP", "name": "Ripple", "price": 0.5},
+            {"symbol": "ADA", "name": "Cardano", "price": 0.4},
+            {"symbol": "DOGE", "name": "Dogecoin", "price": 0.1},
+            {"symbol": "DOT", "name": "Polkadot", "price": 6.0},
+            {"symbol": "AVAX", "name": "Avalanche", "price": 30.0},
+            {"symbol": "MATIC", "name": "Polygon", "price": 0.8}
+        ]
         
-        return coins
+        for i, coin_data in enumerate(popular_coins[:limit]):
+            # Генерируем случайное изменение цены
+            price_change_percent = (np.random.random() - 0.5) * 10  # от -5% до +5%
+            price_change = coin_data["price"] * price_change_percent / 100
+            
+            # Генерируем случайный объем
+            volume = coin_data["price"] * np.random.uniform(1000, 100000)
+            
+            # Генерируем случайную рыночную капитализацию
+            market_cap = coin_data["price"] * np.random.uniform(1000000, 10000000000)
+            
+            # Создаем заглушку для монеты
+            mock_coin = {
+                "id": f"mock-{coin_data['symbol'].lower()}",
+                "symbol": coin_data["symbol"],
+                "name": coin_data["name"],
+                "price": coin_data["price"],
+                "price_change_24h": price_change,
+                "price_change_percent_24h": price_change_percent,
+                "volume24h": volume,
+                "marketCap": market_cap,
+                "rank": i + 1,
+                "high24h": coin_data["price"] * (1 + np.random.uniform(0, 0.05)),
+                "low24h": coin_data["price"] * (1 - np.random.uniform(0, 0.05))
+            }
+            
+            mock_coins.append(mock_coin)
+        
+        return mock_coins
     
     @cached(ttl=300)  # Кэшируем на 5 минут
     async def get_coin_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -184,16 +224,53 @@ class CryptoDataManager:
             
             return db_data
         
-        # Если нет данных в базе, пробуем получить из API
+        # Если нет данных в базе и из WebSocket, генерируем заглушку
         if not db_data:
-            # Ищем монету по символу в API
-            coins = await self.api.get_coins(limit=500)
+            # Словарь популярных монет
+            popular_coins = {
+                "BTC": {"name": "Bitcoin", "price": 50000.0},
+                "ETH": {"name": "Ethereum", "price": 3000.0},
+                "BNB": {"name": "Binance Coin", "price": 400.0},
+                "SOL": {"name": "Solana", "price": 100.0},
+                "XRP": {"name": "Ripple", "price": 0.5},
+                "ADA": {"name": "Cardano", "price": 0.4},
+                "DOGE": {"name": "Dogecoin", "price": 0.1},
+                "DOT": {"name": "Polkadot", "price": 6.0},
+                "AVAX": {"name": "Avalanche", "price": 30.0},
+                "MATIC": {"name": "Polygon", "price": 0.8}
+            }
             
-            for coin in coins:
-                if coin.get('symbol', '').upper() == symbol.upper():
-                    # Сохраняем монету в базу данных
-                    await self.db.save_coins([coin])
-                    return coin
+            # Проверяем, есть ли монета в списке популярных
+            symbol_upper = symbol.upper()
+            if symbol_upper in popular_coins:
+                coin_data = popular_coins[symbol_upper]
+                
+                # Генерируем случайное изменение цены
+                price_change_percent = (np.random.random() - 0.5) * 10  # от -5% до +5%
+                price_change = coin_data["price"] * price_change_percent / 100
+                
+                # Генерируем случайный объем
+                volume = coin_data["price"] * np.random.uniform(1000, 100000)
+                
+                # Генерируем случайную рыночную капитализацию
+                market_cap = coin_data["price"] * np.random.uniform(1000000, 10000000000)
+                
+                # Создаем заглушку для монеты
+                mock_coin = {
+                    "id": f"mock-{symbol_upper.lower()}",
+                    "symbol": symbol_upper,
+                    "name": coin_data["name"],
+                    "price": coin_data["price"],
+                    "price_change_24h": price_change,
+                    "price_change_percent_24h": price_change_percent,
+                    "volume24h": volume,
+                    "marketCap": market_cap,
+                    "rank": list(popular_coins.keys()).index(symbol_upper) + 1,
+                    "high24h": coin_data["price"] * (1 + np.random.uniform(0, 0.05)),
+                    "low24h": coin_data["price"] * (1 - np.random.uniform(0, 0.05))
+                }
+                
+                return mock_coin
         
         return db_data
     
@@ -213,15 +290,16 @@ class CryptoDataManager:
             logger.info("Получение рыночных данных из базы данных")
             return await self.db.get_latest_market_data()
         
-        # Иначе получаем данные из API
-        logger.info("Получение рыночных данных из API")
-        market_data = await self.api.get_market_data()
+        # Иначе генерируем заглушку для рыночных данных
+        logger.info("Генерация заглушки для рыночных данных")
+        mock_market_data = {
+            "totalMarketCap": 1.2e12,  # 1.2 триллиона
+            "total24hVolume": 48.5e9,  # 48.5 миллиардов
+            "btcDominance": 52.3,
+            "timestamp": datetime.now().isoformat()
+        }
         
-        # Если получили данные из API, сохраняем их в базу
-        if market_data:
-            await self.db.save_market_data(market_data)
-        
-        return market_data
+        return mock_market_data
     
     async def get_price_history(self, symbol: str, days: int = 7) -> List[Dict[str, Any]]:
         """
@@ -248,20 +326,36 @@ class CryptoDataManager:
         # Получаем историю цен из базы данных
         history = await self.db.get_price_history(coin_id, days)
         
-        # Если история недостаточно полная, получаем из API
-        if len(history) < days:
-            # Получаем историю из API
-            api_history = await self.api.get_coin_historical(coin_id, days=days)
+        # Возвращаем историю из базы данных, даже если она неполная
+        # Чтобы не тратить API запросы
+        if history:
+            return history
             
-            if api_history:
-                # Сохраняем историю в базу данных
-                # Здесь нужно преобразовать формат данных API в формат базы данных
-                # Это зависит от конкретного API и структуры базы данных
-                pass
-            
-            return api_history
+        # Генерируем заглушку для истории цен
+        mock_history = []
+        current_price = coin.get('price', 1000)
+        current_time = datetime.now()
         
-        return history
+        for i in range(days):
+            # Генерируем случайную цену в пределах ±5% от текущей
+            price_change = (np.random.random() - 0.5) * 0.1  # от -5% до +5%
+            price = current_price * (1 + price_change)
+            
+            # Генерируем случайный объем
+            volume = current_price * np.random.uniform(100, 10000)
+            
+            # Генерируем случайную рыночную капитализацию
+            market_cap = price * np.random.uniform(1000000, 10000000)
+            
+            # Добавляем точку истории
+            mock_history.append({
+                'timestamp': (current_time - timedelta(days=i)).isoformat(),
+                'price': price,
+                'volume': volume,
+                'marketCap': market_cap
+            })
+        
+        return mock_history
     
     async def get_top_coins(self, limit: int = 10) -> List[Dict[str, Any]]:
         """

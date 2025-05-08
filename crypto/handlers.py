@@ -426,6 +426,7 @@ async def callback_smart_money(callback: CallbackQuery):
     try:
         # Получаем анализатор Smart Money
         from .analytics.smart_money_analyzer import get_smart_money_analyzer
+        from datetime import datetime
         analyzer = get_smart_money_analyzer()
         
         # Получаем сигналы Smart Money
