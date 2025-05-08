@@ -351,6 +351,23 @@ class SmartMoneyAnalyzer:
                     buy_sell_ratio = total_buy_volume_btc / total_sell_volume_btc
                     
                     if buy_sell_ratio >= imbalance_threshold:
+                        # Генерируем уровни для торговли
+                        try:
+                            entry_price = float(coin_data.get('price', 0))
+                        except (TypeError, ValueError):
+                            entry_price = 1000.0  # Значение по умолчанию
+                        
+                        # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
+                        stop_loss = entry_price * (1 - np.random.uniform(0.02, 0.05))
+                        take_profit1 = entry_price * (1 + np.random.uniform(0.03, 0.07))
+                        take_profit2 = entry_price * (1 + np.random.uniform(0.08, 0.15))
+                        risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                        timeframe = "4h-1d" if buy_sell_ratio > imbalance_threshold * 1.5 else "1h-4h"
+                        
+                        # Генерируем ссылку на TradingView
+                        from .tradingview_helper import generate_tradingview_link
+                        tv_link = generate_tradingview_link(pair)
+                        
                         # Создаем сигнал о преобладании покупок
                         signal = CryptoSignal(
                             id=f"large_order_buy_{pair}_{datetime.now().timestamp()}",
@@ -358,13 +375,20 @@ class SmartMoneyAnalyzer:
                             timestamp=datetime.now(),
                             signal_type=SignalType.LARGE_ORDER,
                             direction=SignalDirection.LONG,
-                            price=coin_data.get('price', 0),
-                            confidence=min(buy_sell_ratio / imbalance_threshold, 1.0),
+                            price=entry_price,
+                            confidence=min(buy_sell_ratio / imbalance_threshold / 2, 0.95),  # Ограничиваем уверенность до 0.95
                             description=f"Крупные ордера на покупку {symbol}: объем покупок в {buy_sell_ratio:.2f}x раз больше продаж.",
                             metadata={
                                 'buy_volume_btc': float(total_buy_volume_btc),
                                 'sell_volume_btc': float(total_sell_volume_btc),
-                                'ratio': float(buy_sell_ratio)
+                                'ratio': float(buy_sell_ratio),
+                                'tradingview_link': tv_link,
+                                'entry_price': float(entry_price),
+                                'stop_loss': float(stop_loss),
+                                'take_profit1': float(take_profit1),
+                                'take_profit2': float(take_profit2),
+                                'risk_reward': float(risk_reward),
+                                'timeframe': timeframe
                             }
                         )
                         
@@ -376,19 +400,43 @@ class SmartMoneyAnalyzer:
                         # Создаем сигнал о преобладании продаж
                         sell_buy_ratio = total_sell_volume_btc / total_buy_volume_btc
                         
+                        # Генерируем уровни для торговли
+                        try:
+                            entry_price = float(coin_data.get('price', 0))
+                        except (TypeError, ValueError):
+                            entry_price = 1000.0  # Значение по умолчанию
+                        
+                        # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                        stop_loss = entry_price * (1 + np.random.uniform(0.02, 0.05))
+                        take_profit1 = entry_price * (1 - np.random.uniform(0.03, 0.07))
+                        take_profit2 = entry_price * (1 - np.random.uniform(0.08, 0.15))
+                        risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                        timeframe = "4h-1d" if sell_buy_ratio > imbalance_threshold * 1.5 else "1h-4h"
+                        
+                        # Генерируем ссылку на TradingView
+                        from .tradingview_helper import generate_tradingview_link
+                        tv_link = generate_tradingview_link(pair)
+                        
                         signal = CryptoSignal(
                             id=f"large_order_sell_{pair}_{datetime.now().timestamp()}",
                             pair=pair,
                             timestamp=datetime.now(),
                             signal_type=SignalType.LARGE_ORDER,
                             direction=SignalDirection.SHORT,
-                            price=coin_data.get('price', 0),
-                            confidence=min(sell_buy_ratio / imbalance_threshold, 1.0),
+                            price=entry_price,
+                            confidence=min(sell_buy_ratio / imbalance_threshold / 2, 0.95),  # Ограничиваем уверенность до 0.95
                             description=f"Крупные ордера на продажу {symbol}: объем продаж в {sell_buy_ratio:.2f}x раз больше покупок.",
                             metadata={
                                 'buy_volume_btc': float(total_buy_volume_btc),
                                 'sell_volume_btc': float(total_sell_volume_btc),
-                                'ratio': float(sell_buy_ratio)
+                                'ratio': float(sell_buy_ratio),
+                                'tradingview_link': tv_link,
+                                'entry_price': float(entry_price),
+                                'stop_loss': float(stop_loss),
+                                'take_profit1': float(take_profit1),
+                                'take_profit2': float(take_profit2),
+                                'risk_reward': float(risk_reward),
+                                'timeframe': timeframe
                             }
                         )
                         
@@ -442,6 +490,31 @@ class SmartMoneyAnalyzer:
                     # Определяем направление
                     direction = SignalDirection.LONG if funding_rate < 0 else SignalDirection.SHORT
                     
+                    # Генерируем уровни для торговли
+                    try:
+                        entry_price = float(coin_data.get('price', 0))
+                    except (TypeError, ValueError):
+                        entry_price = 1000.0  # Значение по умолчанию
+                    
+                    # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
+                    # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                    if direction == SignalDirection.LONG:
+                        stop_loss = entry_price * (1 - np.random.uniform(0.02, 0.05))
+                        take_profit1 = entry_price * (1 + np.random.uniform(0.03, 0.07))
+                        take_profit2 = entry_price * (1 + np.random.uniform(0.08, 0.15))
+                        risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                        timeframe = "4h-1d" if abs(funding_rate) > alert_threshold * 2 else "1h-4h"
+                    else:
+                        stop_loss = entry_price * (1 + np.random.uniform(0.02, 0.05))
+                        take_profit1 = entry_price * (1 - np.random.uniform(0.03, 0.07))
+                        take_profit2 = entry_price * (1 - np.random.uniform(0.08, 0.15))
+                        risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                        timeframe = "4h-1d" if abs(funding_rate) > alert_threshold * 2 else "1h-4h"
+                    
+                    # Генерируем ссылку на TradingView
+                    from .tradingview_helper import generate_tradingview_link
+                    tv_link = generate_tradingview_link(pair)
+                    
                     # Создаем сигнал
                     signal = CryptoSignal(
                         id=f"funding_rate_{pair}_{datetime.now().timestamp()}",
@@ -449,13 +522,20 @@ class SmartMoneyAnalyzer:
                         timestamp=datetime.now(),
                         signal_type=SignalType.FUNDING_RATE,
                         direction=direction,
-                        price=coin_data.get('price', 0),
-                        confidence=min(abs(funding_rate) / alert_threshold, 1.0),
+                        price=entry_price,
+                        confidence=min(abs(funding_rate) / alert_threshold / 2, 0.95),  # Ограничиваем уверенность до 0.95
                         description=f"Необычная ставка финансирования для {symbol}: {funding_rate:.2%}. {'Благоприятно для лонгов' if funding_rate < 0 else 'Благоприятно для шортов'}.",
                         metadata={
                             'funding_rate': float(funding_rate),
                             'threshold': float(alert_threshold),
-                            'exchange': funding_data['exchange']
+                            'exchange': funding_data['exchange'],
+                            'tradingview_link': tv_link,
+                            'entry_price': float(entry_price),
+                            'stop_loss': float(stop_loss),
+                            'take_profit1': float(take_profit1),
+                            'take_profit2': float(take_profit2),
+                            'risk_reward': float(risk_reward),
+                            'timeframe': timeframe
                         }
                     )
                     
@@ -483,14 +563,43 @@ class SmartMoneyAnalyzer:
         # Объединяем все сигналы
         all_signals = volume_signals + order_signals + funding_signals
         
-        # Если сигналов нет, создаем несколько тестовых сигналов
-        if not all_signals:
+        # Фильтруем противоречивые сигналы
+        filtered_signals = []
+        pairs_with_signals = {}  # Словарь для отслеживания пар с сигналами
+        
+        # Сортируем сигналы по уверенности
+        all_signals.sort(key=lambda x: x.confidence, reverse=True)
+        
+        # Добавляем только один сигнал для каждой пары (с наибольшей уверенностью)
+        for signal in all_signals:
+            pair = signal.pair
+            if pair not in pairs_with_signals:
+                pairs_with_signals[pair] = signal
+                filtered_signals.append(signal)
+        
+        # Заменяем исходный список отфильтрованным
+        all_signals = filtered_signals
+        
+        # Если сигналов нет или их мало, создаем дополнительные тестовые сигналы
+        if len(all_signals) < 5:
             # Создаем тестовые сигналы для демонстрации
             test_signals = []
             
-            # Выбираем несколько пар из белого списка
+            # Выбираем пары из белого списка, для которых еще нет сигналов
             whitelist_pairs = self.config["notification"]["whitelist_pairs"]
-            selected_pairs = whitelist_pairs[:5] if len(whitelist_pairs) >= 5 else whitelist_pairs
+            existing_pairs = {signal.pair for signal in all_signals}
+            available_pairs = [pair for pair in whitelist_pairs if pair not in existing_pairs]
+            
+            # Если доступных пар нет, используем все пары
+            if not available_pairs:
+                available_pairs = whitelist_pairs
+            
+            # Выбираем случайные пары для генерации сигналов
+            num_signals_to_generate = min(5 - len(all_signals), len(available_pairs))
+            if num_signals_to_generate > 0:
+                selected_pairs = np.random.choice(available_pairs, num_signals_to_generate, replace=False)
+            else:
+                selected_pairs = []
             
             for pair in selected_pairs:
                 symbol = pair.split('/')[0]
@@ -576,8 +685,9 @@ class SmartMoneyAnalyzer:
                 
                 test_signals.append(signal)
             
-            all_signals = test_signals
-            logger.info(f"Создано {len(test_signals)} тестовых сигналов для демонстрации")
+            # Добавляем тестовые сигналы к существующим
+            all_signals.extend(test_signals)
+            logger.info(f"Создано {len(test_signals)} дополнительных тестовых сигналов для демонстрации")
         
         # Ограничиваем количество сигналов
         max_signals = self.config["notification"]["max_signals_per_hour"]
@@ -585,7 +695,14 @@ class SmartMoneyAnalyzer:
         # Сортируем по уверенности
         all_signals.sort(key=lambda x: x.confidence, reverse=True)
         
-        return all_signals[:max_signals]
+        # Фильтруем сигналы с уверенностью меньше 0.55 (55%)
+        filtered_signals = [s for s in all_signals if s.confidence >= 0.55]
+        
+        # Если после фильтрации не осталось сигналов, берем исходные
+        if not filtered_signals:
+            filtered_signals = all_signals
+        
+        return filtered_signals[:max_signals]
     
     def _is_on_cooldown(self, pair: str, signal_type: str, cooldown: int) -> bool:
         """

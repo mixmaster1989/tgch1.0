@@ -97,8 +97,8 @@ class CryptoDataManager:
         try:
             logger.info("Начало обновления данных из API")
             
-            # Получаем данные о монетах из API
-            coins = await self.api.get_coins(limit=500)
+            # Используем заглушки вместо API запросов
+            coins = await self._get_mock_coins(limit=500)
             
             if coins:
                 # Сохраняем данные в базу данных
@@ -109,8 +109,8 @@ class CryptoDataManager:
                 
                 logger.info(f"Обновлены данные о {len(coins)} монетах")
             
-            # Получаем рыночные данные из API
-            market_data = await self.api.get_market_data()
+            # Получаем рыночные данные из заглушки
+            market_data = self._get_mock_market_data()
             
             if market_data:
                 # Сохраняем данные в базу данных
@@ -128,30 +128,16 @@ class CryptoDataManager:
         except Exception as e:
             logger.error(f"Ошибка при обновлении данных: {e}")
     
-    @cached(ttl=300)  # Кэшируем на 5 минут
-    async def get_coins(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    async def _get_mock_coins(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Получает информацию о монетах
+        Генерирует заглушку для монет
         
         Args:
             limit: Максимальное количество монет
-            offset: Смещение для пагинации
             
         Returns:
             List[Dict[str, Any]]: Список монет
         """
-        # Проверяем свежесть данных
-        coins_updated, _ = await self.db.get_data_freshness()
-        
-        # Если данные свежие (не старше 1 часа), берем из базы данных
-        if coins_updated and datetime.now() - coins_updated < timedelta(hours=1):
-            logger.info(f"Получение {limit} монет из базы данных")
-            return await self.db.get_coins(limit, offset)
-        
-        # Иначе генерируем заглушку для монет
-        logger.info(f"Генерация заглушки для {limit} монет")
-        mock_coins = []
-        
         # Список популярных монет
         popular_coins = [
             {"symbol": "BTC", "name": "Bitcoin", "price": 50000.0},
@@ -163,8 +149,20 @@ class CryptoDataManager:
             {"symbol": "DOGE", "name": "Dogecoin", "price": 0.1},
             {"symbol": "DOT", "name": "Polkadot", "price": 6.0},
             {"symbol": "AVAX", "name": "Avalanche", "price": 30.0},
-            {"symbol": "MATIC", "name": "Polygon", "price": 0.8}
+            {"symbol": "MATIC", "name": "Polygon", "price": 0.8},
+            {"symbol": "LINK", "name": "Chainlink", "price": 15.0},
+            {"symbol": "UNI", "name": "Uniswap", "price": 5.0},
+            {"symbol": "ATOM", "name": "Cosmos", "price": 8.0},
+            {"symbol": "LTC", "name": "Litecoin", "price": 70.0},
+            {"symbol": "SHIB", "name": "Shiba Inu", "price": 0.00001},
+            {"symbol": "NEAR", "name": "Near Protocol", "price": 3.0},
+            {"symbol": "ALGO", "name": "Algorand", "price": 0.2},
+            {"symbol": "FTM", "name": "Fantom", "price": 0.4},
+            {"symbol": "MANA", "name": "Decentraland", "price": 0.5},
+            {"symbol": "XLM", "name": "Stellar", "price": 0.1}
         ]
+        
+        mock_coins = []
         
         for i, coin_data in enumerate(popular_coins[:limit]):
             # Генерируем случайное изменение цены
@@ -195,6 +193,44 @@ class CryptoDataManager:
             mock_coins.append(mock_coin)
         
         return mock_coins
+    
+    def _get_mock_market_data(self) -> Dict[str, Any]:
+        """
+        Генерирует заглушку для рыночных данных
+        
+        Returns:
+            Dict[str, Any]: Рыночные данные
+        """
+        return {
+            "totalMarketCap": 1.2e12,  # 1.2 триллиона
+            "total24hVolume": 48.5e9,  # 48.5 миллиардов
+            "btcDominance": 52.3,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    @cached(ttl=300)  # Кэшируем на 5 минут
+    async def get_coins(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Получает информацию о монетах
+        
+        Args:
+            limit: Максимальное количество монет
+            offset: Смещение для пагинации
+            
+        Returns:
+            List[Dict[str, Any]]: Список монет
+        """
+        # Проверяем свежесть данных
+        coins_updated, _ = await self.db.get_data_freshness()
+        
+        # Если данные свежие (не старше 1 часа), берем из базы данных
+        if coins_updated and datetime.now() - coins_updated < timedelta(hours=1):
+            logger.info(f"Получение {limit} монет из базы данных")
+            return await self.db.get_coins(limit, offset)
+        
+        # Иначе генерируем заглушку для монет
+        logger.info(f"Генерация заглушки для {limit} монет")
+        return await self._get_mock_coins(limit)
     
     @cached(ttl=300)  # Кэшируем на 5 минут
     async def get_coin_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -237,7 +273,17 @@ class CryptoDataManager:
                 "DOGE": {"name": "Dogecoin", "price": 0.1},
                 "DOT": {"name": "Polkadot", "price": 6.0},
                 "AVAX": {"name": "Avalanche", "price": 30.0},
-                "MATIC": {"name": "Polygon", "price": 0.8}
+                "MATIC": {"name": "Polygon", "price": 0.8},
+                "LINK": {"name": "Chainlink", "price": 15.0},
+                "UNI": {"name": "Uniswap", "price": 5.0},
+                "ATOM": {"name": "Cosmos", "price": 8.0},
+                "LTC": {"name": "Litecoin", "price": 70.0},
+                "SHIB": {"name": "Shiba Inu", "price": 0.00001},
+                "NEAR": {"name": "Near Protocol", "price": 3.0},
+                "ALGO": {"name": "Algorand", "price": 0.2},
+                "FTM": {"name": "Fantom", "price": 0.4},
+                "MANA": {"name": "Decentraland", "price": 0.5},
+                "XLM": {"name": "Stellar", "price": 0.1}
             }
             
             # Проверяем, есть ли монета в списке популярных
@@ -292,14 +338,7 @@ class CryptoDataManager:
         
         # Иначе генерируем заглушку для рыночных данных
         logger.info("Генерация заглушки для рыночных данных")
-        mock_market_data = {
-            "totalMarketCap": 1.2e12,  # 1.2 триллиона
-            "total24hVolume": 48.5e9,  # 48.5 миллиардов
-            "btcDominance": 52.3,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return mock_market_data
+        return self._get_mock_market_data()
     
     async def get_price_history(self, symbol: str, days: int = 7) -> List[Dict[str, Any]]:
         """
