@@ -1,5 +1,7 @@
 channel_id: "-1002565798338"
 admin_id: 432823154
+admins: []
+allowed_users: []
 post_schedule:
   - "10:00"
   - "14:00"

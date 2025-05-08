@@ -29,11 +29,25 @@ def load_config():
         return config
     except Exception as e:
         logger.error(f"Ошибка при загрузке конфигурации: {e}")
-        return {"channel_id": None, "admin_id": None}
+        return {"channel_id": None, "admin_id": None, "allowed_users": [], "admins": []}
+
+# Сохранение конфигурации
+def save_config(config):
+    config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
+    try:
+        with open(config_path, 'w', encoding='utf-8') as file:
+            yaml.dump(config, file, default_flow_style=False)
+        logger.info("Конфигурация успешно сохранена")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении конфигурации: {e}")
+        return False
 
 config = load_config()
 CHANNEL_ID = config.get("channel_id")
 ADMIN_ID = config.get("admin_id")
+ALLOWED_USERS = config.get("allowed_users", [])
+ADMINS = config.get("admins", [])
 
 # Временное хранилище для сгенерированных постов
 generated_posts = {}
@@ -41,12 +55,15 @@ generated_posts = {}
 # Глобальная переменная для хранения экземпляра бота
 bot_instance = None
 
+# Словарь для хранения состояний пользователей
+user_states = {}
+
 def set_bot(bot):
     global bot_instance
     bot_instance = bot
 
 # Создание клавиатур
-def get_main_keyboard(is_admin=False):
+def get_main_keyboard(is_admin=False, is_allowed=False, is_additional_admin=False):
     """Создает основную клавиатуру с кнопками команд"""
     keyboard = [
         [KeyboardButton(text="🔄 Сгенерировать пост")],
@@ -58,6 +75,12 @@ def get_main_keyboard(is_admin=False):
         keyboard.append([KeyboardButton(text="🚀 Продвижение")])
         keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
         keyboard.append([KeyboardButton(text="⚙️ Настройки")])
+    elif is_additional_admin:
+        keyboard.insert(1, [KeyboardButton(text="📢 Опубликовать в канал")])
+        keyboard.append([KeyboardButton(text="🚀 Продвижение")])
+        keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
+    elif is_allowed:
+        keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
@@ -103,6 +126,9 @@ def get_settings_keyboard():
         ],
         [
             InlineKeyboardButton(text="⏱ Расписание постов", callback_data="settings_schedule")
+        ],
+        [
+            InlineKeyboardButton(text="👥 Управление администраторами", callback_data="settings_admins")
         ],
         [
             InlineKeyboardButton(text="🔙 Назад", callback_data="settings_back")
@@ -246,15 +272,21 @@ async def handle_generation_completion(task_id):
 async def cmd_start(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} запустил команду /start")
     
-    # Проверяем, является ли пользователь администратором
+    # Проверяем, является ли пользователь главным администратором
     is_admin = message.from_user.id == ADMIN_ID
+    
+    # Проверяем, является ли пользователь дополнительным администратором
+    is_additional_admin = message.from_user.id in ADMINS
+    
+    # Проверяем, является ли пользователь разрешенным
+    is_allowed = message.from_user.id in ALLOWED_USERS
     
     # Отправляем приветственное сообщение
     await message.answer(
         f"👋 Привет, {message.from_user.first_name}!\n\n"
         "Я бот для генерации и публикации постов. "
         "Используйте кнопки ниже для управления.",
-        reply_markup=get_main_keyboard(is_admin)
+        reply_markup=get_main_keyboard(is_admin, is_allowed, is_additional_admin)
     )
 
 @router.message(Command("help"))
@@ -338,6 +370,188 @@ async def text_settings(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} нажал кнопку 'Настройки'")
     await cmd_settings(message)
 
+@router.message(F.contact)
+async def handle_contact(message: types.Message):
+    """
+    Обработчик для полученного контакта
+    """
+    logger.info(f"Пользователь {message.from_user.id} отправил контакт")
+    
+    # Проверяем, что пользователь находится в состоянии ожидания контакта
+    if message.from_user.id in user_states and user_states[message.from_user.id] == "waiting_for_admin_contact":
+        # Получаем ID пользователя из контакта
+        contact = message.contact
+        user_id = contact.user_id
+        
+        # Загружаем текущую конфигурацию
+        config = load_config()
+        admins = config.get("admins", [])
+        
+        # Проверяем, не является ли пользователь уже администратором
+        if user_id == ADMIN_ID:
+            await message.answer("Этот пользователь уже является главным администратором.")
+            return
+        
+        if user_id in admins:
+            await message.answer("Этот пользователь уже является администратором.")
+            return
+        
+        # Добавляем пользователя в список администраторов
+        admins.append(user_id)
+        config["admins"] = admins
+        
+        # Сохраняем обновленную конфигурацию
+        if save_config(config):
+            await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
+            
+            # Обновляем глобальную переменную
+            global ADMINS
+            ADMINS = admins
+        else:
+            await message.answer("Произошла ошибка при сохранении конфигурации.")
+        
+        # Очищаем состояние пользователя
+        del user_states[message.from_user.id]
+        
+        # Возвращаем основную клавиатуру
+        is_admin = message.from_user.id == ADMIN_ID
+        is_additional_admin = message.from_user.id in ADMINS
+        is_allowed = message.from_user.id in ALLOWED_USERS
+        
+        await message.answer(
+            "Возвращаемся в главное меню.",
+            reply_markup=get_main_keyboard(is_admin, is_allowed, is_additional_admin)
+        )
+    else:
+        await message.answer("Я не запрашивал контакт. Пожалуйста, используйте команды бота.")
+
+@router.message(F.forward_from)
+async def handle_forwarded_message(message: types.Message):
+    """
+    Обработчик для пересланного сообщения
+    """
+    logger.info(f"Пользователь {message.from_user.id} переслал сообщение")
+    
+    # Проверяем, что пользователь находится в состоянии ожидания контакта
+    if message.from_user.id in user_states and user_states[message.from_user.id] == "waiting_for_admin_contact":
+        # Получаем ID пользователя из пересланного сообщения
+        forwarded_from = message.forward_from
+        if forwarded_from:
+            user_id = forwarded_from.id
+            
+            # Загружаем текущую конфигурацию
+            config = load_config()
+            admins = config.get("admins", [])
+            
+            # Проверяем, не является ли пользователь уже администратором
+            if user_id == ADMIN_ID:
+                await message.answer("Этот пользователь уже является главным администратором.")
+                return
+            
+            if user_id in admins:
+                await message.answer("Этот пользователь уже является администратором.")
+                return
+            
+            # Добавляем пользователя в список администраторов
+            admins.append(user_id)
+            config["admins"] = admins
+            
+            # Сохраняем обновленную конфигурацию
+            if save_config(config):
+                await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
+                
+                # Обновляем глобальную переменную
+                global ADMINS
+                ADMINS = admins
+            else:
+                await message.answer("Произошла ошибка при сохранении конфигурации.")
+            
+            # Очищаем состояние пользователя
+            del user_states[message.from_user.id]
+            
+            # Возвращаем основную клавиатуру
+            is_admin = message.from_user.id == ADMIN_ID
+            is_additional_admin = message.from_user.id in ADMINS
+            is_allowed = message.from_user.id in ALLOWED_USERS
+            
+            await message.answer(
+                "Возвращаемся в главное меню.",
+                reply_markup=get_main_keyboard(is_admin, is_allowed, is_additional_admin)
+            )
+        else:
+            await message.answer("Не удалось получить информацию о пользователе из пересланного сообщения. Попробуйте другой способ.")
+    else:
+        # Обычная обработка пересланных сообщений
+        pass
+
+@router.message(lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == "waiting_for_admin_contact")
+async def handle_admin_id_input(message: types.Message):
+    """
+    Обработчик для ввода ID администратора вручную
+    """
+    logger.info(f"Пользователь {message.from_user.id} ввел ID администратора")
+    
+    # Проверяем, является ли введенный текст числом
+    if message.text == "❌ Отмена":
+        # Очищаем состояние пользователя
+        del user_states[message.from_user.id]
+        
+        # Возвращаем основную клавиатуру
+        is_admin = message.from_user.id == ADMIN_ID
+        is_additional_admin = message.from_user.id in ADMINS
+        is_allowed = message.from_user.id in ALLOWED_USERS
+        
+        await message.answer(
+            "Операция отменена. Возвращаемся в главное меню.",
+            reply_markup=get_main_keyboard(is_admin, is_allowed, is_additional_admin)
+        )
+        return
+    
+    try:
+        user_id = int(message.text)
+        
+        # Загружаем текущую конфигурацию
+        config = load_config()
+        admins = config.get("admins", [])
+        
+        # Проверяем, не является ли пользователь уже администратором
+        if user_id == ADMIN_ID:
+            await message.answer("Этот пользователь уже является главным администратором.")
+            return
+        
+        if user_id in admins:
+            await message.answer("Этот пользователь уже является администратором.")
+            return
+        
+        # Добавляем пользователя в список администраторов
+        admins.append(user_id)
+        config["admins"] = admins
+        
+        # Сохраняем обновленную конфигурацию
+        if save_config(config):
+            await message.answer(f"Пользователь с ID {user_id} успешно добавлен в список администраторов.")
+            
+            # Обновляем глобальную переменную
+            global ADMINS
+            ADMINS = admins
+        else:
+            await message.answer("Произошла ошибка при сохранении конфигурации.")
+        
+        # Очищаем состояние пользователя
+        del user_states[message.from_user.id]
+        
+        # Возвращаем основную клавиатуру
+        is_admin = message.from_user.id == ADMIN_ID
+        is_additional_admin = message.from_user.id in ADMINS
+        is_allowed = message.from_user.id in ALLOWED_USERS
+        
+        await message.answer(
+            "Возвращаемся в главное меню.",
+            reply_markup=get_main_keyboard(is_admin, is_allowed, is_additional_admin)
+        )
+    except ValueError:
+        await message.answer("Пожалуйста, введите корректный ID пользователя (только цифры).")
+
 @router.message(F.text == "🚀 Продвижение")
 async def text_promotion(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} нажал кнопку 'Продвижение'")
@@ -350,11 +564,15 @@ async def text_crypto(message: types.Message):
     """
     logger.info(f"Пользователь {message.from_user.id} нажал кнопку 'Крипто анализ'")
     
-    # Импортируем функцию из криптомодуля
-    from crypto.handlers import cmd_crypto_mode
-    
-    # Вызываем обработчик команды
-    await cmd_crypto_mode(message)
+    # Проверяем, имеет ли пользователь доступ к криптомодулю
+    if message.from_user.id == ADMIN_ID or message.from_user.id in ADMINS or message.from_user.id in ALLOWED_USERS:
+        # Импортируем функцию из криптомодуля
+        from crypto.handlers import cmd_crypto_mode
+        
+        # Вызываем обработчик команды
+        await cmd_crypto_mode(message)
+    else:
+        await message.answer("У вас нет доступа к этой функции. Обратитесь к администратору бота.")
 
 # Обработчики callback-запросов
 @router.callback_query(F.data.startswith("type_"))
@@ -567,6 +785,126 @@ async def callback_settings_schedule(callback: types.CallbackQuery):
     )
     
     await callback.answer()
+
+@router.callback_query(F.data == "settings_admins")
+async def callback_settings_admins(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} запросил управление администраторами")
+    
+    # Загружаем текущий список администраторов
+    config = load_config()
+    admin_id = config.get("admin_id")
+    admins = config.get("admins", [])
+    
+    # Формируем список администраторов для отображения
+    admins_text = f"Главный администратор: {admin_id}\n\nДополнительные администраторы:\n"
+    
+    if admins:
+        for i, admin in enumerate(admins, 1):
+            admins_text += f"{i}. ID: {admin}\n"
+    else:
+        admins_text += "Список пуст\n"
+    
+    # Создаем клавиатуру для управления администраторами
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➕ Добавить администратора", callback_data="admin_add")
+        ],
+        [
+            InlineKeyboardButton(text="❌ Удалить администратора", callback_data="admin_remove")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="settings_back")
+        ]
+    ])
+    
+    await callback.message.edit_text(
+        f"👥 *Управление администраторами*\n\n{admins_text}\n"
+        "Выберите действие:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_add")
+async def callback_admin_add(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} запросил добавление администратора")
+    
+    # Создаем клавиатуру для запроса контакта
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📲 Поделиться контактом", request_contact=True)],
+            [KeyboardButton(text="❌ Отмена")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    
+    # Сохраняем состояние пользователя
+    user_states[callback.from_user.id] = "waiting_for_admin_contact"
+    
+    await callback.message.answer(
+        "Для добавления администратора, пожалуйста:\n\n"
+        "1. Перешлите сообщение от пользователя, которого хотите добавить\n"
+        "ИЛИ\n"
+        "2. Введите ID пользователя вручную\n\n"
+        "Вы также можете поделиться контактом, нажав на кнопку ниже.",
+        reply_markup=keyboard
+    )
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_remove")
+async def callback_admin_remove(callback: types.CallbackQuery):
+    logger.info(f"Пользователь {callback.from_user.id} запросил удаление администратора")
+    
+    # Загружаем текущий список администраторов
+    config = load_config()
+    admins = config.get("admins", [])
+    
+    if not admins:
+        await callback.answer("Список администраторов пуст")
+        return
+    
+    # Создаем клавиатуру для выбора администратора для удаления
+    keyboard = InlineKeyboardBuilder()
+    
+    for i, admin in enumerate(admins):
+        keyboard.button(text=f"❌ {admin}", callback_data=f"remove_admin_{admin}")
+    
+    keyboard.button(text="🔙 Назад", callback_data="settings_admins")
+    keyboard.adjust(1)
+    
+    await callback.message.edit_text(
+        "Выберите администратора для удаления:",
+        reply_markup=keyboard.as_markup()
+    )
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("remove_admin_"))
+async def callback_remove_admin(callback: types.CallbackQuery):
+    admin_id = int(callback.data.split("_")[2])
+    logger.info(f"Пользователь {callback.from_user.id} удаляет администратора {admin_id}")
+    
+    # Загружаем текущий список администраторов
+    config = load_config()
+    admins = config.get("admins", [])
+    
+    # Удаляем администратора из списка
+    if admin_id in admins:
+        admins.remove(admin_id)
+        
+        # Сохраняем обновленный список администраторов
+        config["admins"] = admins
+        save_config(config)
+        
+        await callback.answer(f"Администратор {admin_id} удален")
+    else:
+        await callback.answer("Администратор не найден")
+    
+    # Возвращаемся к списку администраторов
+    await callback_settings_admins(callback)
 
 @router.callback_query(F.data == "settings_back")
 async def callback_settings_back(callback: types.CallbackQuery):
