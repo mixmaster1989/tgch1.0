@@ -442,17 +442,62 @@ async def callback_smart_money(callback: CallbackQuery):
             
             # Форматируем сигналы для отображения
             signals_text = ""
+            
+            # Создаем клавиатуру для TradingView ссылок
+            tv_builder = InlineKeyboardBuilder()
+            
             for i, signal in enumerate(filtered_signals[:10]):  # Показываем до 10 сигналов
                 pair = signal.pair
                 direction = "🟢 LONG" if signal.direction == SignalDirection.LONG else "🔴 SHORT"
                 confidence = int(signal.confidence * 100)
-                desc = signal.description.split('.')[0]  # Берем только первое предложение
                 
                 # Проверяем, является ли сигнал тестовым
                 is_test = signal.metadata.get('test_signal', False) or '[ТЕСТ]' in signal.description
                 test_marker = "🧪 " if is_test else ""
                 
-                signals_text += f"• {test_marker}{pair}: {direction} ({confidence}% уверенность) - {desc}\n\n"
+                # Получаем данные для торговли
+                entry_price = signal.metadata.get('entry_price', signal.price)
+                stop_loss = signal.metadata.get('stop_loss', 0)
+                take_profit1 = signal.metadata.get('take_profit1', 0)
+                take_profit2 = signal.metadata.get('take_profit2', 0)
+                risk_reward = signal.metadata.get('risk_reward', 0)
+                timeframe = signal.metadata.get('timeframe', 'н/д')
+                
+                # Добавляем номер сигнала для ссылки на TradingView
+                signal_num = i + 1
+                
+                # Форматируем полное описание сигнала
+                signals_text += (
+                    f"• {signal_num}. {test_marker}{pair}: {direction} ({confidence}% уверенность)\n"
+                    f"  📈 Вход: ${entry_price:.2f}\n"
+                    f"  🛑 Стоп-лосс: ${stop_loss:.2f}\n"
+                    f"  🎯 Цели: ${take_profit1:.2f} и ${take_profit2:.2f}\n"
+                    f"  ⚖️ Риск/Прибыль: 1:{risk_reward}\n"
+                    f"  ⏱️ Горизонт: {timeframe}\n\n"
+                )
+                
+                # Добавляем кнопку для TradingView, если есть ссылка
+                tv_link = signal.metadata.get('tradingview_link')
+                if tv_link:
+                    tv_builder.button(
+                        text=f"📊 {signal_num}. {pair} на TradingView", 
+                        url=tv_link
+                    )
+            
+            # Добавляем кнопку "Назад"
+            tv_builder.button(text="🔙 Назад", callback_data="crypto_back_to_main")
+            
+            # Настраиваем расположение кнопок (по одной в строке)
+            tv_builder.adjust(1)
+            
+            await callback.message.edit_text(
+                f"📈 *Smart Money Signals*\n\n"
+                f"Отслеживание активности крупных игроков на рынке:\n\n"
+                f"{signals_text}"
+                f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M')} UTC",
+                reply_markup=tv_builder.as_markup(),
+                parse_mode="Markdown"
+            )
             
             await callback.message.edit_text(
                 f"📈 *Smart Money Signals*\n\n"

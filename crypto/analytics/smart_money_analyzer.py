@@ -130,6 +130,39 @@ class SmartMoneyAnalyzer:
                             # Случайная уверенность от 0.3 до 0.9
                             confidence = np.random.uniform(0.3, 0.9)
                             
+                            # Генерируем ссылку на TradingView
+                            from .tradingview_helper import generate_tradingview_link
+                            tv_link = generate_tradingview_link(pair)
+                            
+                            # Генерируем уровни для торговли
+                            entry_price = price
+                            
+                            # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
+                            # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                            if direction == SignalDirection.LONG:
+                                stop_loss = price * (1 - np.random.uniform(0.02, 0.05))
+                                take_profit1 = price * (1 + np.random.uniform(0.03, 0.07))
+                                take_profit2 = price * (1 + np.random.uniform(0.08, 0.15))
+                                risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                                timeframe = "4h-1d"
+                            else:
+                                stop_loss = price * (1 + np.random.uniform(0.02, 0.05))
+                                take_profit1 = price * (1 - np.random.uniform(0.03, 0.07))
+                                take_profit2 = price * (1 - np.random.uniform(0.08, 0.15))
+                                risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                                timeframe = "4h-1d"
+                            
+                            # Создаем расширенное описание с торговыми рекомендациями
+                            volume_ratio = np.random.uniform(1.1, 3.0)
+                            description = (
+                                f"[ТЕСТ] Всплеск объема для {symbol}: объем в {volume_ratio:.2f}x раз выше среднего. "
+                                f"Рекомендация: {direction.name} с входом около ${entry_price:.2f}. "
+                                f"Стоп-лосс: ${stop_loss:.2f}. "
+                                f"Цели: ${take_profit1:.2f} и ${take_profit2:.2f}. "
+                                f"Соотношение риск/прибыль: 1:{risk_reward}. "
+                                f"Временной горизонт: {timeframe}."
+                            )
+                            
                             # Создаем тестовый сигнал
                             signal = CryptoSignal(
                                 id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
@@ -139,12 +172,19 @@ class SmartMoneyAnalyzer:
                                 direction=direction,
                                 price=price,
                                 confidence=confidence,
-                                description=f"[ТЕСТ] Всплеск объема для {symbol}: объем в {np.random.uniform(1.1, 3.0):.2f}x раз выше среднего.",
+                                description=description,
                                 metadata={
                                     'volume': float(price * 1000),  # Заглушка
                                     'volume_ma': float(price * 500),  # Заглушка
                                     'ratio': 2.0,  # Заглушка
-                                    'test_signal': True  # Помечаем как тестовый сигнал
+                                    'test_signal': True,  # Помечаем как тестовый сигнал
+                                    'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
+                                    'entry_price': float(entry_price),
+                                    'stop_loss': float(stop_loss),
+                                    'take_profit1': float(take_profit1),
+                                    'take_profit2': float(take_profit2),
+                                    'risk_reward': float(risk_reward),
+                                    'timeframe': timeframe
                                 }
                             )
                             
@@ -173,6 +213,42 @@ class SmartMoneyAnalyzer:
                     price_change = df['price'].iloc[-1] - df['price'].iloc[-2]
                     direction = SignalDirection.LONG if price_change > 0 else SignalDirection.SHORT
                     
+                    # Генерируем ссылку на TradingView
+                    from .tradingview_helper import generate_tradingview_link
+                    tv_link = generate_tradingview_link(pair)
+                    
+                    # Текущая цена
+                    current_price = float(df['price'].iloc[-1])
+                    
+                    # Генерируем уровни для торговли
+                    entry_price = current_price
+                    
+                    # Для LONG: стоп ниже текущей цены на 2-5%, цели выше на 3-15%
+                    # Для SHORT: стоп выше текущей цены на 2-5%, цели ниже на 3-15%
+                    if direction == SignalDirection.LONG:
+                        stop_loss = current_price * (1 - np.random.uniform(0.02, 0.05))
+                        take_profit1 = current_price * (1 + np.random.uniform(0.03, 0.07))
+                        take_profit2 = current_price * (1 + np.random.uniform(0.08, 0.15))
+                        risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                        timeframe = "4h-1d" if last_volume / last_volume_ma > 2.0 else "1h-4h"
+                    else:
+                        stop_loss = current_price * (1 + np.random.uniform(0.02, 0.05))
+                        take_profit1 = current_price * (1 - np.random.uniform(0.03, 0.07))
+                        take_profit2 = current_price * (1 - np.random.uniform(0.08, 0.15))
+                        risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                        timeframe = "4h-1d" if last_volume / last_volume_ma > 2.0 else "1h-4h"
+                    
+                    # Создаем расширенное описание с торговыми рекомендациями
+                    volume_ratio = last_volume / last_volume_ma
+                    description = (
+                        f"Всплеск объема для {symbol}: объем в {volume_ratio:.2f}x раз выше среднего. "
+                        f"Рекомендация: {direction.name} с входом около ${entry_price:.2f}. "
+                        f"Стоп-лосс: ${stop_loss:.2f}. "
+                        f"Цели: ${take_profit1:.2f} и ${take_profit2:.2f}. "
+                        f"Соотношение риск/прибыль: 1:{risk_reward}. "
+                        f"Временной горизонт: {timeframe}."
+                    )
+                    
                     # Создаем сигнал
                     signal = CryptoSignal(
                         id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
@@ -180,13 +256,20 @@ class SmartMoneyAnalyzer:
                         timestamp=datetime.now(),
                         signal_type=SignalType.VOLUME_SPIKE,
                         direction=direction,
-                        price=float(df['price'].iloc[-1]),
-                        confidence=min(last_volume / last_volume_ma / threshold, 1.0),
-                        description=f"Всплеск объема для {symbol}: объем в {last_volume / last_volume_ma:.2f}x раз выше среднего.",
+                        price=current_price,
+                        confidence=min(volume_ratio / threshold, 1.0),
+                        description=description,
                         metadata={
                             'volume': float(last_volume),
                             'volume_ma': float(last_volume_ma),
-                            'ratio': float(last_volume / last_volume_ma)
+                            'ratio': float(volume_ratio),
+                            'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
+                            'entry_price': float(entry_price),
+                            'stop_loss': float(stop_loss),
+                            'take_profit1': float(take_profit1),
+                            'take_profit2': float(take_profit2),
+                            'risk_reward': float(risk_reward),
+                            'timeframe': timeframe
                         }
                     )
                     
@@ -444,6 +527,10 @@ class SmartMoneyAnalyzer:
                     else:
                         description = f"[ТЕСТ] Необычная ставка финансирования для {symbol}: {rate:.2%}. Благоприятно для шортов"
                 
+                # Генерируем ссылку на TradingView
+                from .tradingview_helper import generate_tradingview_link
+                tv_link = generate_tradingview_link(pair)
+                
                 # Создаем тестовый сигнал
                 signal = CryptoSignal(
                     id=f"{signal_type.name.lower()}_{pair}_{datetime.now().timestamp()}",
@@ -453,9 +540,10 @@ class SmartMoneyAnalyzer:
                     direction=direction,
                     price=price,
                     confidence=confidence,
-                    description=f"[ТЕСТ] {description}",
+                    description=description,
                     metadata={
-                        'test_signal': True
+                        'test_signal': True,
+                        'tradingview_link': tv_link  # Добавляем ссылку на TradingView
                     }
                 )
                 
