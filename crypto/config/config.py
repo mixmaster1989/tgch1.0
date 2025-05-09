@@ -52,7 +52,21 @@ def get_config() -> Dict[str, Any]:
         # Логируем содержимое файла конфигурации
         try:
             with open(CONFIG_PATH, 'r') as f:
-                logger.debug(f"Содержимое файла конфигурации:\n{f.read()}")
+                raw_config = f.read()
+                logger.debug(f"Содержимое файла конфигурации:\n{raw_config}")
+                
+                try:
+                    config = yaml.safe_load(raw_config)
+                    if not validate_config(config):
+                        raise ValueError("Некорректная структура конфигурации")
+                    
+                    _config_cache = config
+                    return config
+                    
+                except yaml.YAMLError as ye:
+                    logger.error(f"Ошибка парсинга YAML: {ye}")
+                except ValueError as ve:
+                    logger.error(f"Ошибка валидации: {ve}")
         except Exception as e:
             logger.error(f"Ошибка чтения файла конфигурации: {e}")
             
@@ -178,3 +192,12 @@ def get_data_manager() -> Optional[CryptoDataManager]:
             logger.error(f"Ошибка при получении конфигурации: {e}")
             
     return _data_manager
+
+# Добавим валидацию конфигурации
+def validate_config(config: dict) -> bool:
+    required_sections = ["api", "analytics", "notification", "caching", "background"]
+    for section in required_sections:
+        if section not in config:
+            logger.error(f"Отсутствует обязательная секция конфигурации: {section}")
+            return False
+    return True
