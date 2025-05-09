@@ -3,6 +3,9 @@
 """
 
 import logging
+
+logger = logging.getLogger(__name__)
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -173,15 +176,12 @@ async def callback_alerts_disable(callback: CallbackQuery):
 
 @router.callback_query(F.data == "crypto_alerts_settings")
 async def callback_alerts_settings(callback: CallbackQuery):
-    """
-    Обработчик настроек уведомлений
-    """
     user_id = callback.from_user.id
-    
-    # Получаем текущие настройки
+
     settings = await user_preferences.get_user_settings(user_id)
-    
-    # Создаем клавиатуру
+
+    logger.info(f"Current user settings: {settings}")  # Добавляем логирование
+
     builder = InlineKeyboardBuilder()
     
     # Кнопки для включения/отключения типов уведомлений
