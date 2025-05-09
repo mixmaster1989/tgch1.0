@@ -19,7 +19,7 @@ from ..data_sources.crypto_cache import cached
 logger = logging.getLogger('crypto.analytics.smart_money_analyzer')
 
 # Импортируем Santiment API
-from .santiment_api import SantimentAPI
+from crypto.data_sources.santiment_api import SantimentAPI
 
 
 class SmartMoneyAnalyzer:
