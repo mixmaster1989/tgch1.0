@@ -26,7 +26,16 @@ class PriceAlertManager:
         Инициализирует менеджер ценовых уведомлений
         """
         config = get_config()
-        api_key = config.cryptorank.api_key
+        if not config:
+            logger.error("Конфигурация не загружена")
+            raise RuntimeError("Ошибка загрузки конфигурации")
+        
+        try:
+            api_key = config.cryptorank.api_key
+        except AttributeError as e:
+            logger.error(f"Ошибка при получении API ключа: {e}")
+            raise
+        
         self.cryptorank_api = CryptorankAPI(api_key)
         self.config = config
         self.user_preferences = UserPreferences()
