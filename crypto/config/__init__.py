@@ -14,7 +14,9 @@ try:
     __all__ = ['get_config', 'get_cryptorank_api_key']
 except Exception as e:
     logger.error(f"Ошибка при импорте из config: {e}")
-    # Определим заглушки, если импорт не удался
+    import traceback
+    logger.error(traceback.format_exc())  # Добавлено детальное логирование ошибки
+    
     def get_config() -> None:
         raise ImportError("Не удалось загрузить конфигурацию")
     
