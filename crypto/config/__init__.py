@@ -15,10 +15,10 @@ try:
 except Exception as e:
     logger.error(f"Ошибка при импорте из config: {e}")
     # Определим заглушки, если импорт не удался
-    def get_config():
+    def get_config() -> None:
         raise ImportError("Не удалось загрузить конфигурацию")
     
-    def get_cryptorank_api_key():
+    def get_cryptorank_api_key() -> str:
         raise ImportError("Не удалось получить API-ключ Cryptorank")
     
     __all__ = []
