@@ -18,31 +18,41 @@ from ..data_sources.crypto_cache import cached
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.analytics.smart_money_analyzer')
 
+# Импортируем Santiment API
+from .santiment_api import SantimentAPI
+
+
 class SmartMoneyAnalyzer:
     """
-    Класс для анализа Smart Money сигналов
+    Класс для анализа сигналов Smart Money
     """
     
-    def __init__(self):
+    def __init__(self, data_manager: CryptoDataManager, config_path: str = None):
         """
         Инициализирует анализатор Smart Money
-        """
-        self.data_manager = get_data_manager()
-        self.config = self._load_config()
         
-        # Кэш для хранения последних сигналов
-        self._last_signals = {}  # pair -> {timestamp, signal_type}
+        Args:
+            data_manager: Менеджер данных
+            config_path: Путь к файлу конфигурации
+        """
+        self.data_manager = data_manager
+        self.config = self._load_config(config_path)
+        self._last_signals = {}  # Для отслеживания времени последнего сигнала для каждой пары
         
         logger.info("Инициализирован анализатор Smart Money")
     
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self, config_path: str = None) -> Dict[str, Any]:
         """
         Загружает конфигурацию Smart Money
         
+        Args:
+            config_path: Путь к файлу конфигурации
+            
         Returns:
             Dict[str, Any]: Конфигурация
         """
-        config_path = Path(__file__).parent.parent / "config" / "smart_money_config.yaml"
+        if config_path is None:
+            config_path = Path(__file__).parent.parent / "config" / "smart_money_config.yaml"
         
         try:
             with open(config_path, 'r') as f:
@@ -91,196 +101,172 @@ class SmartMoneyAnalyzer:
                 }
             }
     
-    async def analyze_volume_spikes(self) -> List[CryptoSignal]:
+    async def analyze_volume_spikes(self, pair: str, threshold: float = 3.0) -> Optional[CryptoSignal]:
         """
-        Анализирует всплески объема
+        Анализирует всплески объема торгов для конкретной пары
         
+        Args:
+            pair: Торговая пара
+            threshold: Пороговое значение для обнаружения аномалий (в стандартных отклонениях)
+            
         Returns:
-            List[CryptoSignal]: Список сигналов о всплесках объема
+            Optional[CryptoSignal]: Сигнал с информацией о всплеске объема или None
         """
-        signals = []
+        symbol = pair.split('/')[0]
         
-        try:
-            # Получаем настройки
-            threshold = self.config["analytics"]["volume_spike"]["threshold"]
-            ma_period = self.config["analytics"]["volume_spike"]["ma_period"]
-            whitelist_pairs = self.config["notification"]["whitelist_pairs"]
-            cooldown = self.config["notification"]["cooldown_per_pair"]
+        # Проверяем, не было ли недавно сигнала для этой пары
+        cooldown = self.config["notification"]["cooldown_per_pair"]
+        if self._is_on_cooldown(pair, "volume_spike", cooldown):
+            return None
+        
+        # Получаем данные о монете
+        coin_data = await self.data_manager.get_coin_by_symbol(symbol)
+        
+        if not coin_data:
+            return None
+        
+        # Получаем историю цен
+        price_history = await self.data_manager.get_price_history(symbol, days=30)
+        
+        if not price_history:
+            return None
+        
+        # Вычисляем средний объем за последние 30 дней
+        volumes = [entry['volume'] for entry in price_history]
+        avg_volume = np.mean(volumes)
+        std_volume = np.std(volumes)
+        
+        # Текущий объем
+        current_volume = coin_data.get('volume24h', 0)
+        
+        # Проверяем, не слишком ли мал текущий объем
+        if avg_volume == 0 or current_volume < 1000:  # Минимальный объем для анализа
+            return None
+        
+        # Вычисляем z-оценку для текущего объема
+        z_score = (current_volume - avg_volume) / std_volume
+        
+        # Генерируем сигнал только если z-оценка превышает порог
+        if z_score > threshold:
+            # Рассчитываем процентное изменение цены за последние 24 часа
+            price_change_24h = coin_data.get('price_change_percent_24h', 0)
             
-            # Для каждой пары из белого списка
-            for pair in whitelist_pairs:
-                symbol = pair.split('/')[0]
-                
-                # Проверяем, не было ли недавно сигнала для этой пары
-                if self._is_on_cooldown(pair, "volume_spike", cooldown):
-                    continue
-                
-                # Получаем историю цен и объемов
-                history = await self.data_manager.get_price_history(symbol, days=ma_period)
-                
-                if not history:
-                    # Если истории нет, генерируем тестовый сигнал с вероятностью 30%
-                    if np.random.random() < 0.3:
-                        # Получаем данные о монете
-                        coin_data = await self.data_manager.get_coin_by_symbol(symbol)
-                        if coin_data and 'price' in coin_data:
-                            price = coin_data['price']
-                            # Случайное направление
-                            direction = SignalDirection.LONG if np.random.random() > 0.5 else SignalDirection.SHORT
-                            # Случайная уверенность от 0.3 до 0.9
-                            confidence = np.random.uniform(0.3, 0.9)
-                            
-                            # Генерируем ссылку на TradingView
-                            from .tradingview_helper import generate_tradingview_link
-                            tv_link = generate_tradingview_link(pair)
-                            
-                            # Генерируем уровни для торговли
-                            entry_price = price
-                            
-                            # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
-                            # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
-                            if direction == SignalDirection.LONG:
-                                stop_loss = price * (1 - np.random.uniform(0.005, 0.02))
-                                take_profit1 = price * (1 + np.random.uniform(0.01, 0.03))
-                                take_profit2 = price * (1 + np.random.uniform(0.03, 0.05))
-                                risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-                            else:
-                                stop_loss = price * (1 + np.random.uniform(0.005, 0.02))
-                                take_profit1 = price * (1 - np.random.uniform(0.01, 0.03))
-                                take_profit2 = price * (1 - np.random.uniform(0.03, 0.05))
-                                risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-                            
-                            # Создаем расширенное описание с торговыми рекомендациями
-                            volume_ratio = np.random.uniform(1.1, 3.0)
-                            description = (
-                                f"[ТЕСТ] Всплеск объема для {symbol}: объем в {volume_ratio:.2f}x раз выше среднего. "
-                                f"Рекомендация: {direction.name} с входом около ${entry_price:.2f}. "
-                                f"Стоп-лосс: ${stop_loss:.2f}. "
-                                f"Цели: ${take_profit1:.2f} и ${take_profit2:.2f}. "
-                                f"Соотношение риск/прибыль: 1:{risk_reward}. "
-                                f"Временной горизонт: {timeframe}."
-                            )
-                            
-                            # Создаем тестовый сигнал
-                            signal = CryptoSignal(
-                                id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
-                                pair=pair,
-                                timestamp=datetime.now(),
-                                signal_type=SignalType.VOLUME_SPIKE,
-                                direction=direction,
-                                price=price,
-                                confidence=confidence,
-                                description=description,
-                                metadata={
-                                    'volume': float(price * 1000),  # Заглушка
-                                    'volume_ma': float(price * 500),  # Заглушка
-                                    'ratio': 2.0,  # Заглушка
-                                    'test_signal': True,  # Помечаем как тестовый сигнал
-                                    'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
-                                    'entry_price': float(entry_price),
-                                    'stop_loss': float(stop_loss),
-                                    'take_profit1': float(take_profit1),
-                                    'take_profit2': float(take_profit2),
-                                    'risk_reward': float(risk_reward),
-                                    'timeframe': timeframe
-                                }
-                            )
-                            
-                            signals.append(signal)
-                            self._update_last_signal(pair, "volume_spike")
-                            logger.info(f"Создан тестовый сигнал всплеска объема для {pair}")
-                    continue
-                
-                # Преобразуем в pandas DataFrame
-                df = pd.DataFrame(history)
-                
-                # Проверяем наличие необходимых данных
-                if 'volume' not in df.columns or len(df) < 2:
-                    continue
-                
-                # Вычисляем скользящую среднюю объема
-                df['volume_ma'] = df['volume'].rolling(window=min(len(df), 24)).mean()
-                
-                # Получаем последний объем и его скользящую среднюю
-                last_volume = df['volume'].iloc[-1]
-                last_volume_ma = df['volume_ma'].iloc[-1]
-                
-                # Если объем превышает скользящую среднюю в threshold раз
-                if last_volume > last_volume_ma * threshold:
-                    # Определяем направление на основе изменения цены
-                    price_change = df['price'].iloc[-1] - df['price'].iloc[-2]
-                    direction = SignalDirection.LONG if price_change > 0 else SignalDirection.SHORT
-                    
-                    # Генерируем ссылку на TradingView
-                    from .tradingview_helper import generate_tradingview_link
-                    tv_link = generate_tradingview_link(pair)
-                    
-                    # Текущая цена
-                    current_price = float(df['price'].iloc[-1])
-                    
-                    # Генерируем уровни для торговли
-                    entry_price = current_price
-                    
-                    # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
-                    # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
-                    if direction == SignalDirection.LONG:
-                        stop_loss = current_price * (1 - np.random.uniform(0.005, 0.02))
-                        take_profit1 = current_price * (1 + np.random.uniform(0.01, 0.03))
-                        take_profit2 = current_price * (1 + np.random.uniform(0.03, 0.05))
-                        risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-                    else:
-                        stop_loss = current_price * (1 + np.random.uniform(0.005, 0.02))
-                        take_profit1 = current_price * (1 - np.random.uniform(0.01, 0.03))
-                        take_profit2 = current_price * (1 - np.random.uniform(0.03, 0.05))
-                        risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-                    
-                    # Создаем расширенное описание с торговыми рекомендациями
-                    volume_ratio = last_volume / last_volume_ma
-                    description = (
-                        f"Всплеск объема для {symbol}: объем в {volume_ratio:.2f}x раз выше среднего. "
-                        f"Рекомендация: {direction.name} с входом около ${entry_price:.2f}. "
-                        f"Стоп-лосс: ${stop_loss:.2f}. "
-                        f"Цели: ${take_profit1:.2f} и ${take_profit2:.2f}. "
-                        f"Соотношение риск/прибыль: 1:{risk_reward}. "
-                        f"Временной горизонт: {timeframe}."
-                    )
-                    
-                    # Создаем сигнал
-                    signal = CryptoSignal(
-                        id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
-                        pair=pair,
-                        timestamp=datetime.now(),
-                        signal_type=SignalType.VOLUME_SPIKE,
-                        direction=direction,
-                        price=current_price,
-                        confidence=min(volume_ratio / threshold, 1.0),
-                        description=description,
-                        metadata={
-                            'volume': float(last_volume),
-                            'volume_ma': float(last_volume_ma),
-                            'ratio': float(volume_ratio),
-                            'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
-                            'entry_price': float(entry_price),
-                            'stop_loss': float(stop_loss),
-                            'take_profit1': float(take_profit1),
-                            'take_profit2': float(take_profit2),
-                            'risk_reward': float(risk_reward),
-                            'timeframe': timeframe
-                        }
-                    )
-                    
-                    signals.append(signal)
-                    self._update_last_signal(pair, "volume_spike")
-                    logger.info(f"Обнаружен всплеск объема для {pair}")
+            # Рассчитываем отношение объема к изменению цены
+            volume_to_price_ratio = abs(current_volume) / max(abs(price_change_24h), 0.1)  # Избегаем деления на ноль
             
-            return signals
-        except Exception as e:
-            logger.error(f"Ошибка при анализе всплесков объема: {e}")
-            return []
+            # Получаем дополнительные метрики из Santiment
+            dev_activity_trend = coin_data.get('dev_activity_trend', 'neutral')
+            social_volume_trend = coin_data.get('social_volume_trend', 'neutral')
+            exchange_flows_trend = coin_data.get('exchange_flows_trend', 'neutral')
+            network_growth_trend = coin_data.get('network_growth_trend', 'neutral')
+            
+            # Определяем силу сигнала на основе тенденций из Santiment
+            strength = 1.0
+            
+            # Увеличиваем силу сигнала, если тенденции положительны
+            if dev_activity_trend == 'positive':
+                strength += 0.3
+            elif dev_activity_trend == 'negative':
+                strength -= 0.3
+                
+            if social_volume_trend == 'positive':
+                strength += 0.4
+            elif social_volume_trend == 'negative':
+                strength -= 0.4
+                
+            if exchange_flows_trend == 'positive':
+                strength += 0.2
+            elif exchange_flows_trend == 'negative':
+                strength -= 0.2
+                
+            if network_growth_trend == 'positive':
+                strength += 0.3
+            elif network_growth_trend == 'negative':
+                strength -= 0.3
+                
+            # Нормализуем силу сигнала в диапазоне [0.5, 2.0]
+            strength = max(0.5, min(strength, 2.0))
+            
+            # Получаем текущую цену
+            try:
+                price = float(coin_data.get('price', 0))
+            except (TypeError, ValueError):
+                price = 1000.0  # Значение по умолчанию
+            
+            # Генерируем уровни для торговли
+            entry_price = price
+            
+            # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+            # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
+            if price_change_24h > 0:
+                direction = SignalDirection.LONG
+                stop_loss = entry_price * (1 - np.random.uniform(0.005, 0.02))
+                take_profit1 = entry_price * (1 + np.random.uniform(0.01, 0.03))
+                take_profit2 = entry_price * (1 + np.random.uniform(0.03, 0.05))
+                risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
+            else:
+                direction = SignalDirection.SHORT
+                stop_loss = entry_price * (1 + np.random.uniform(0.005, 0.02))
+                take_profit1 = entry_price * (1 - np.random.uniform(0.01, 0.03))
+                take_profit2 = entry_price * (1 - np.random.uniform(0.03, 0.05))
+                risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
+            
+            # Генерируем ссылку на TradingView
+            from .tradingview_helper import generate_tradingview_link
+            tv_link = generate_tradingview_link(pair)
+            
+            # Создаем сигнал
+            signal = CryptoSignal(
+                id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
+                pair=pair,
+                timestamp=datetime.now(),
+                signal_type=SignalType.VOLUME_SPIKE,
+                direction=direction,
+                price=price,
+                confidence=min(z_score / threshold, 0.95),
+                description=f"Всплеск объема для {symbol}: объем в {z_score:.2f}x раз выше среднего. Рекомендация: {direction.name}.",
+                metadata={
+                    'volume': float(current_volume),
+                    'avg_volume': float(avg_volume),
+                    'std_volume': float(std_volume),
+                    'ratio': float(z_score),
+                    'price_change_24h': float(price_change_24h),
+                    'volume_to_price_ratio': float(volume_to_price_ratio),
+                    'strength': float(strength),
+                    'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
+                    'entry_price': float(entry_price),
+                    'stop_loss': float(stop_loss),
+                    'take_profit1': float(take_profit1),
+                    'take_profit2': float(take_profit2),
+                    'risk_reward': float(risk_reward),
+                    'timeframe': timeframe
+                }
+            )
+            
+            # Добавляем рекомендацию на основе силы сигнала и тенденций
+            if strength > 1.5 and all(trend in ['positive', 'neutral'] 
+                                 for trend in [dev_activity_trend, social_volume_trend, 
+                                              exchange_flows_trend, network_growth_trend]):
+                signal.recommendation = 'strong_buy'
+            elif strength > 1.2 and any(trend == 'positive' 
+                               for trend in [dev_activity_trend, social_volume_trend, 
+                                            exchange_flows_trend, network_growth_trend]):
+                signal.recommendation = 'buy'
+            elif strength < 0.8 and any(trend == 'negative' 
+                                for trend in [dev_activity_trend, social_volume_trend, 
+                                             exchange_flows_trend, network_growth_trend]):
+                signal.recommendation = 'sell'
+            else:
+                signal.recommendation = 'hold'
+            
+            # Обновляем время последнего сигнала
+            self._update_last_signal(pair, "volume_spike")
+            logger.info(f"Создан сигнал всплеска объема для {pair}")
+            return signal
+        
+        return None
     
     async def analyze_large_orders(self) -> List[CryptoSignal]:
         """
@@ -820,21 +806,55 @@ class SmartMoneyAnalyzer:
         Returns:
             Dict[str, Any]: Заглушка для ставки финансирования
         """
-        # Генерируем случайную ставку финансирования с большей вероятностью экстремальных значений
-        # Используем бета-распределение для создания более экстремальных значений
-        if np.random.random() < 0.7:  # 70% вероятность генерации значимой ставки
-            # Генерируем значение от -0.2 до 0.2 с большей вероятностью экстремальных значений
-            alpha, beta = 0.5, 0.5  # Параметры бета-распределения для U-образной формы
-            value = np.random.beta(alpha, beta)  # Значение от 0 до 1
-            value = (value * 2 - 1) * 0.2  # Преобразуем в диапазон от -0.2 до 0.2
-        else:
-            # Обычное равномерное распределение
-            value = np.random.uniform(-0.05, 0.05)
+        # Получаем данные о монете
+        coin_data = await self.data_manager.get_coin_by_symbol(symbol)
+        
+        if not coin_data or 'price' not in coin_data:
+            return {'rate': 0.0, 'exchange': 'unknown'}
+        
+        # Убедимся, что price - это число
+        try:
+            price = float(coin_data['price'])
+        except (TypeError, ValueError):
+            price = 1000.0  # Значение по умолчанию
+        
+        # Генерируем случайную ставку финансирования
+        # Базовая ставка зависит от символа
+        base_rate = {
+            'BTC': 0.0005,
+            'ETH': 0.0006,
+            'BNB': 0.0008,
+            'SOL': 0.001,
+            'XRP': 0.0012,
+            'ADA': 0.0015,
+            'DOGE': 0.002,
+            'DOT': 0.0013,
+            'AVAX': 0.0014,
+            'MATIC': 0.0016,
+            'LINK': 0.0017,
+            'UNI': 0.0018,
+            'ATOM': 0.0019,
+            'LTC': 0.0011,
+            'SHIB': 0.0025,
+            'NEAR': 0.0015,
+            'ALGO': 0.0017,
+            'FTM': 0.002,
+            'MANA': 0.0022,
+            'XLM': 0.0024
+        }.get(symbol.upper(), 0.0015)
+        
+        # Добавляем случайное изменение к базовой ставке
+        rate_change = np.random.uniform(-0.0005, 0.0005)
+        rate = base_rate + rate_change
+        
+        # Генерируем случайную биржу
+        exchanges = ['Binance', 'Bybit', 'OKX', 'Bitfinex', 'Kraken']
+        exchange = np.random.choice(exchanges)
         
         return {
-            'rate': value,
-            'exchange': 'Binance',
-            'timestamp': datetime.now()
+            'rate': rate,
+            'exchange': exchange,
+            'timestamp': datetime.now().isoformat()
         }
 
 # Создаем глобальный экземпляр анализатора

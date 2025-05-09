@@ -12,6 +12,9 @@ from datetime import datetime
 from .models import CryptoSignal, SignalType, SignalDirection
 from .notification.alert_service import AlertService
 from .user_settings.user_preferences import UserPreferences
+# Импортируем менеджер данных и Santiment API
+from .data_sources.crypto_data_manager import get_data_manager
+from .data_sources.santiment_api import SantimentAPI
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.handlers')
@@ -37,6 +40,50 @@ def set_bot(bot):
     _bot = bot
     alert_service.set_bot(bot)
     logger.info("Установлен бот для обработчиков криптомодуля")
+
+@router.message(Command("test_santiment"))
+async def cmd_test_santiment(message: Message):
+    """
+    Обработчик команды /test_santiment
+    Проверяет подключение к Santiment API и отображает статус
+    """
+    try:
+        # Получаем менеджер данных
+        data_manager = get_data_manager()
+        
+        # Проверяем, инициализирован ли клиент Santiment
+        if not data_manager.santiment:
+            await message.reply("Клиент Santiment API не инициализирован. Проверьте наличие API-ключа.")
+            return
+        
+        # Отправляем сообщение о начале тестирования
+        status_message = await message.reply("Тестирование подключения к Santiment API...")
+        
+        # Тестируем подключение с помощью получения метрики dev_activity для Bitcoin
+        logger.info("Получение метрики dev_activity для Bitcoin из Santiment API")
+        dev_activity = await data_manager.santiment.get_dev_activity("bitcoin", days=7)
+        
+        if not dev_activity:
+            await status_message.edit_text("Не удалось получить данные из Santiment API. Проверьте API-ключ и подключение.")
+            return
+        
+        # Вычисляем среднее значение активности за последние 7 дней
+        avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
+        
+        # Формируем сообщение с результатами
+        result = (
+            f"✅ Успешное подключение к Santiment API\n\n"
+            f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
+            f"Среднее значение: {avg_value:.2f}\n\n"
+            f"Пример данных за последний день:\n"
+            f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
+            f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
+            f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        await status_message.edit_text(result)
+    except Exception as e:
+        logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
+        await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
 
 @router.message(Command("crypto_mode"))
 async def cmd_crypto_mode(message: Message):
@@ -620,17 +667,70 @@ async def callback_back_to_main(callback: CallbackQuery):
         parse_mode="Markdown"
     )
 
-def register_crypto_handlers(dp):
+@router.message(Command("update_interval"))
+async def cmd_update_interval(message: Message):
     """
-    Регистрирует обработчики для криптомодуля
-    
-    Args:
-        dp: Диспетчер aiogram
+    Обработчик команды /update_interval
+    Отображает интервал обновления данных
     """
-    dp.include_router(router)
+    # Получаем менеджер данных
+    data_manager = get_data_manager()
     
-    # Запускаем мониторинг уведомлений
-    import asyncio
-    asyncio.create_task(alert_service.start_monitoring())
+    if data_manager.last_api_update:
+        last_update_str = data_manager.last_api_update.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        last_update_str = "Нет данных о последнем обновлении"
     
-    logger.info("Зарегистрированы обработчики криптомодуля")
+    interval_minutes = data_manager.min_update_interval.total_seconds() / 60
+    
+    result = (
+        f"🔄 Интервал обновления данных: {interval_minutes} минут\n"
+        f"🕒 Последнее обновление: {last_update_str}\n\n"
+        "Для изменения интервала используйте команду /set_interval <минут>"
+    )
+    
+    await message.reply(result)
+
+@router.message(Command("set_interval"))
+async def cmd_set_interval(message: Message):
+    """
+    Обработчик команды /set_interval
+    Устанавливает новый интервал обновления данных
+    """
+    # Получаем менеджер данных
+    data_manager = get_data_manager()
+    
+    # Получаем аргументы команды
+    args = message.text.split()[1:]
+    
+    if not args:
+        await message.reply("⚠️ Не указано новое значение интервала в минутах")
+        return
+    
+    try:
+        new_interval = int(args[0])
+        if new_interval < 60:
+            await message.reply("⚠️ Новый интервал не может быть меньше 60 минут")
+            return
+        
+        # Устанавливаем новый интервал
+        data_manager.min_update_interval = timedelta(minutes=new_interval)
+        
+        # Сохраняем новую конфигурацию в файле
+        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            if config and "background" in config:
+                config["background"]["update_interval"] = new_interval * 60  # Сохраняем в секундах
+                
+                with open(config_path, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False)
+                
+            logger.info(f"Интервал обновления установлен в {new_interval} минут")
+            await message.reply(f"✅ Интервал обновления установлен в {new_interval} минут")
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении нового интервала обновления: {e}")
+            await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")n
+```

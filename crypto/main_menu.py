@@ -43,6 +43,14 @@ async def cmd_crypto(message: Message):
     builder.button(text="🔔 Уведомления", callback_data="crypto_alerts")
     builder.button(text="📈 Smart Money", callback_data="crypto_smart_money")
     builder.button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
+    
+    # Получаем менеджер данных
+    data_manager = get_data_manager()
+    
+    # Добавляем кнопку управления ключами только если есть более одного ключа
+    if data_manager.cryptorank_api_keys and len(data_manager.cryptorank_api_keys) > 1:
+        builder.button(text=f"🔄 Управление ключами ({len(data_manager.cryptorank_api_keys)} шт)", callback_data="crypto_key_management")
+    
     builder.adjust(1)
     
     await message.answer(
@@ -133,6 +141,52 @@ async def callback_back_to_main(callback: CallbackQuery):
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
+
+@router.callback_query(F.data == "crypto_key_management")
+async def callback_key_management(callback: CallbackQuery):
+    """
+    Обработчик нажатия на кнопку управления ключами
+    Отображает информацию о текущем API-ключе и доступных ключах
+    """
+    # Получаем менеджер данных
+    data_manager = get_data_manager()
+    
+    # Формируем сообщение с информацией о ключах
+    keys_info = ""
+    
+    if data_manager.cryptorank_api_keys:
+        for i, key in enumerate(data_manager.cryptorank_api_keys):
+            # Скрываем часть ключа для безопасности
+            masked_key = key[:10] + "..." if len(key) > 10 else key
+            status = "(текущий)" if i == data_manager.current_api_key_index else ""
+            keys_info += f"{i+1}. ***{masked_key} {status}\n"
+    
+    # Получаем текущий интервал обновления
+    interval_minutes = data_manager.min_update_interval.total_seconds() / 60
+    
+    result = (
+        f"🔄 *Управление API-ключами*\n\n"
+        f"Текущий ключ: {data_manager.current_api_key_index+1} из {len(data_manager.cryptorank_api_keys)}\n"
+        f"Используется для генерации сигналов и обновления данных\n\n"
+        f"⏳ Интервал обновления: {interval_minutes:.0f} минут\n"
+        "Для изменения интервала используйте команду `/set_interval <минут>`\n\n"
+        "🔐 Доступные ключи:\n"
+        f"{keys_info if keys_info else "Нет дополнительных ключей"}\n\n"
+        "Бот автоматически переключится на следующий ключ при достижении лимита\n"
+        "Или вы можете вручную изменить интервал обновления через команду `/set_interval <минут>`"
+    )
+    
+    await callback.message.edit_text(result, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "crypto_test_santiment")
+async def callback_test_santiment(callback: CallbackQuery):
+    """
+    Обработчик нажатия на кнопку тестирования Santiment API
+    """
+    from crypto.handlers import cmd_test_santiment
+    await cmd_test_santiment(callback.message)
+    await callback.answer()
 
 def register_crypto_menu_handlers(dp):
     """

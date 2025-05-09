@@ -1,0 +1,34 @@
+api:
+  cryptorank:
+    # Список API-ключей для Cryptorank
+    - key: "016d6a16d3bd018fa02c0ddff345d4c5899584e80923c973a282ca4955a3"  # Первый ключ
+    - key: "kb77lvszgqgtxcxs_oikpmfenof6phtzn"  # Второй ключ
+    rate_limit:
+      requests_per_minute: 30
+      credits_per_day: 1000
+  santiment:
+    key: kb77lvszgqgtxcxs_oikpmfenof6phtzn  # Ваш API-ключ для Santiment API
+
+analytics:
+  volume_spike:
+    threshold: 2.0
+
+notification:
+  max_signals_per_hour: 10
+  cooldown_per_pair: 3600  # 1 час в секундах
+  whitelist_pairs: ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"]
+  price_change:
+    threshold_percent: 5.0
+    time_window_minutes: 60
+  volume_spike:
+    threshold: 2.0
+
+caching:
+  coins_ttl: 3600  # Кэшируем список монет на 1 час
+  coin_details_ttl: 1800  # Кэшируем детали монет на 30 минут
+  markets_ttl: 7200  # Кэшируем данные о рынках на 2 часа
+  exchanges_ttl: 7200  # Кэшируем данные о биржах на 2 часа
+
+background:
+  update_interval: 3600  # Интервал фонового обновления (в секундах)
+  retry_interval: 300  # Интервал повторных попыток при ошибках (в секундах)
