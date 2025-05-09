@@ -14,7 +14,7 @@ from .data_sources.crypto_data_manager import get_data_manager
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.main_menu')
 
-# Импортируем модули
+# Импортируем необходимые модули
 try:
     from aiogram import Router, F
     from aiogram.types import Message, CallbackQuery
@@ -23,20 +23,22 @@ try:
     from datetime import datetime
     
     # Импортируем менеджер данных
-    try:
-        from .data_sources.crypto_data_manager import get_data_manager
-        data_manager = get_data_manager()
-        
-        # Проверяем, инициализирован ли менеджер данных корректно
-        if not hasattr(data_manager, 'api') or not data_manager.api:
-            logger.warning("API клиент не инициализирован в data_manager")
-            data_manager = None
-        else:
-            logger.info("Инициализирован main_menu")
-    except Exception as e:
-        logger.error(f"Ошибка при импорте модулей: {e}")
+    from .data_sources.crypto_data_manager import get_data_manager
+    data_manager = get_data_manager()
+    
+    # Проверяем, инициализирован ли менеджер данных корректно
+    if not hasattr(data_manager, 'api') or not data_manager.api:
+        logger.warning("API клиент не инициализирован в data_manager")
         data_manager = None
-
+        
+except ImportError as ie:
+    logger.error(f"Ошибка импорта необходимых модулей: {ie}")
+    data_manager = None
+finally:
+    # Убедимся, что все необходимые компоненты инициализированы
+    if not all([data_manager, alert_service]):
+        logger.warning("Не все компоненты инициализированы")
+        
 # Создаем роутер для обработчиков
 router = Router()
 
