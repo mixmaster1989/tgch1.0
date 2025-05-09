@@ -917,7 +917,8 @@ class SmartMoneyAnalyzer:
             return None
 
 # Создаем глобальный экземпляр анализатора
-_analyzer = SmartMoneyAnalyzer()
+_analyzer = SmartMoneyAnalyzer(data_manager=get_data_manager())
+
 
 def get_smart_money_analyzer() -> SmartMoneyAnalyzer:
     """
