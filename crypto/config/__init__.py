@@ -3,6 +3,7 @@
 """
 
 import logging
+from typing import Any, Optional  # Добавлен импорт Optional
 
 logger = logging.getLogger('crypto.config.__init__')
 
