@@ -42,6 +42,17 @@ router = Router()
 # Глобальная переменная для хранения экземпляра бота
 _bot = None
 
+
+def register_crypto_handlers(dp):
+    """
+    Регистрирует обработчики для криптомодуля
+    
+    Args:
+        dp: Диспетчер aiogram
+    """
+    dp.include_router(router)
+    logger.info("Обработчики криптомодуля зарегистрированы")
+
 # Инициализируем сервисы после всех импортов
 try:
     alert_service = AlertService()
