@@ -7,7 +7,7 @@ import os
 import yaml
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional  # Добавлен импорт Optional
 from datetime import timedelta  # Добавлен для использования в конфигурации
 
 # Получаем логгер для модуля
