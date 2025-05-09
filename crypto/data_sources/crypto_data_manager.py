@@ -16,7 +16,8 @@ from datetime import datetime
 # Импортируем модули
 from .cryptorank_api import CryptorankAPI
 from .santiment_api import SantimentAPI
-from .crypto_cache import CryptoCache, get_cache, cached  # Добавлен недостающий импорт
+from .crypto_database import CryptoDatabase  # Добавлен недостающий импорт
+from .crypto_cache import CryptoCache, get_cache  # Добавлен импорт get_cache
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.data_sources.crypto_data_manager')

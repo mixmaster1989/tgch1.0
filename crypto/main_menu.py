@@ -10,11 +10,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime
 
 from .data_sources.crypto_data_manager import get_data_manager
+from .notification.alert_service import alert_service  # Добавлен недостающий импорт
 
-# Получаем логгер для модуля
-logger = logging.getLogger('crypto.main_menu')
-
-# Импортируем необходимые модули
 try:
     from aiogram import Router, F
     from aiogram.types import Message, CallbackQuery
@@ -25,6 +22,9 @@ try:
     # Импортируем менеджер данных
     from .data_sources.crypto_data_manager import get_data_manager
     data_manager = get_data_manager()
+    
+    # Импортируем сервис уведомлений
+    from .notification.alert_service import alert_service
     
     # Проверяем, инициализирован ли менеджер данных корректно
     if not hasattr(data_manager, 'api') or not data_manager.api:
@@ -39,6 +39,9 @@ finally:
     if not all([data_manager, alert_service]):
         logger.warning("Не все компоненты инициализированы")
         
+# Получаем логгер для модуля
+logger = logging.getLogger('crypto.main_menu')
+
 # Создаем роутер для обработчиков
 router = Router()
 
