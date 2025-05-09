@@ -15,9 +15,6 @@ from datetime import datetime, timedelta
 # Импортируем модули
 from .cryptorank_api import CryptorankAPI
 from .santiment_api import SantimentAPI
-from .crypto_database import CryptoDatabase
-from .crypto_cache import get_cache, cached
-from .crypto_websocket import get_websocket
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.data_sources.crypto_data_manager')
@@ -36,14 +33,14 @@ class CryptoDataManager:
             santiment_api_key: API-ключ для Santiment API (опционально)
         """
         # Получаем конфигурацию
-        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        self.config = None
         try:
-            with open(config_path, 'r') as f:
-                self.config = yaml.safe_load(f)
+            from crypto.config.config import get_config
+            self.config = get_config()
+            logger.info("Конфигурация загружена успешно")
         except Exception as e:
             logger.error(f"Ошибка при загрузке конфигурации: {e}")
-            self.config = {}
-        
+            
         # Загружаем настройки кэширования
         self.caching_settings = self._load_caching_settings()
         
@@ -92,19 +89,22 @@ class CryptoDataManager:
         """
         keys = []
         
-        # Из конфигурации
-        if self.config and "api" in self.config and "cryptorank" in self.config["api"]:
-            if isinstance(self.config["api"]["cryptorank"], list):
-                for key_info in self.config["api"]["cryptorank"]:
-                    if isinstance(key_info, dict) and "key" in key_info:
-                        keys.append(key_info["key"])
-                    elif isinstance(key_info, str):
-                        keys.append(key_info)
-            elif "key" in self.config["api"]["cryptorank"]:
-                keys.append(self.config["api"]["cryptorank"]["key"])
-            else:
-                # Старый формат конфигурации с одним ключом
-                keys.append(self.config["api"]["cryptorank"])
+        try:
+            # Из конфигурации
+            if self.config and "api" in self.config and "cryptorank" in self.config["api"]:
+                if isinstance(self.config["api"]["cryptorank"], list):
+                    for key_info in self.config["api"]["cryptorank"]:
+                        if isinstance(key_info, dict) and "key" in key_info:
+                            keys.append(key_info["key"])
+                        elif isinstance(key_info, str):
+                            keys.append(key_info)
+                elif "key" in self.config["api"]["cryptorank"]:
+                    keys.append(self.config["api"]["cryptorank"]["key"])
+                else:
+                    # Старый формат конфигурации с одним ключом
+                    keys.append(self.config["api"]["cryptorank"])
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить API-ключи из конфигурации: {e}")
         
         # Из переменной окружения
         env_key = os.getenv("CRYPTORANK_API_KEY")
@@ -827,14 +827,22 @@ def get_data_manager() -> CryptoDataManager:
     global _data_manager
     
     if _data_manager is None:
-        # Получаем конфигурацию
-        from crypto.config.config import get_config, get_santiment_api_key
-        config = get_config()
-        
-        # Получаем API-ключ Santiment
-        santiment_api_key = get_santiment_api_key()
-        
-        # Инициализируем менеджер данных с API-ключом Santiment
-        _data_manager = CryptoDataManager(santiment_api_key=santiment_api_key)
+        try:
+            # Получаем конфигурацию
+            from ..config.config import get_config, get_santiment_api_key
+            config = get_config()
+            
+            # Получаем API-ключ Santiment
+            santiment_api_key = get_santiment_api_key()
+            
+            # Инициализируем менеджер данных с API-ключом Santiment
+            _data_manager = CryptoDataManager(santiment_api_key=santiment_api_key)
+        except Exception as e:
+            logger.error(f"Ошибка при инициализации менеджера данных: {e}")
+            
+        # Если все еще нет менеджера, создаем минимальный экземпляр
+        if _data_manager is None:
+            _data_manager = CryptoDataManager(santiment_api_key=None)
+            logger.warning("Создан базовый менеджер данных без конфигурации")
     
     return _data_manager

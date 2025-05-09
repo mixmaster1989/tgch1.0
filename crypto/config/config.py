@@ -18,6 +18,9 @@ CONFIG_PATH = Path(__file__).parent / "config.yaml"
 # Кэш конфигурации
 _config_cache = None
 
+logger.info(f"Попытка загрузки конфигурации из: {CONFIG_PATH}")
+
+
 def get_config() -> Dict[str, Any]:
     """
     Получает конфигурацию из файла
@@ -92,47 +95,12 @@ def get_config() -> Dict[str, Any]:
             logger.info(f"Создана конфигурация по умолчанию: {CONFIG_PATH}")
             _config_cache = default_config
             return default_config
-        
-        # Загружаем конфигурацию из файла
-        with open(CONFIG_PATH, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        logger.info(f"Загружена конфигурация из файла: {CONFIG_PATH}")
-        _config_cache = config
-        return config
     except Exception as e:
-        logger.error(f"Ошибка при загрузке конфигурации: {e}", exc_info=True)
+        logger.error(f"Ошибка при создании конфигурации: {e}")
         
-        # Возвращаем конфигурацию по умолчанию в случае ошибки
-        default_config = {
-            "api": {
-                "cryptorank": {
-                    "rate_limit": {
-                        "requests_per_minute": 30,
-                        "credits_per_day": 1000
-                    }
-                }
-            },
-            "analytics": {
-                "volume_spike": {
-                    "threshold": 2.0
-                }
-            },
-            "notification": {
-                "max_signals_per_hour": 10,
-                "cooldown_per_pair": 3600,  # 1 час в секундах
-                "whitelist_pairs": ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"],
-                "price_change": {
-                    "threshold_percent": 5.0,
-                    "time_window_minutes": 60
-                },
-                "volume_spike": {
-                    "threshold": 2.0
-                }
-            }
-        }
-        
+        # Возвращаем конфигурацию по умолчанию без сохранения в файл
         _config_cache = default_config
+        logger.warning("Используется временная конфигурация без сохранения в файл")
         return default_config
 
 def get_cryptorank_api_key() -> str:
@@ -187,6 +155,9 @@ def get_santiment_api_key() -> str:
     logger.info("API ключ для Santiment получен из переменных окружения")
     return api_key
 
+# Создаем глобальный экземпляр менеджера данных
+_data_manager = None
+    
 def get_data_manager() -> CryptoDataManager:
     """
     Получает глобальный экземпляр менеджера данных
@@ -198,7 +169,7 @@ def get_data_manager() -> CryptoDataManager:
     
     if _data_manager is None:
         # Получаем конфигурацию
-        from crypto.config.config import get_config, get_santiment_api_key
+        from .config import get_config, get_santiment_api_key
         config = get_config()
         
         # Получаем API-ключи Cryptorank

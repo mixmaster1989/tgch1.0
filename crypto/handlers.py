@@ -2,22 +2,39 @@
 Обработчики команд для криптомодуля
 """
 
+# Импортируем модули
 import logging
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime
 
-from .models import CryptoSignal, SignalType, SignalDirection
-from .notification.alert_service import AlertService
-from .user_settings.user_preferences import UserPreferences
-# Импортируем менеджер данных и Santiment API
-from .data_sources.crypto_data_manager import get_data_manager
-from .data_sources.santiment_api import SantimentAPI
-
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.handlers')
+
+# Импортируем типы и сервисы
+try:
+    from .models import CryptoSignal, SignalType, SignalDirection
+    from .notification.alert_service import AlertService
+    from .user_settings.user_preferences import UserPreferences
+    
+    # Импортируем менеджер данных
+    from .data_sources.crypto_data_manager import get_data_manager
+    data_manager = get_data_manager()
+    
+    # Инициализируем Santiment API
+    santiment = None
+    if data_manager and data_manager.santiment:
+        santiment = data_manager.santiment
+    
+    logger.info("Инициализированы сервисы обработки криптовалют")
+except Exception as e:
+    logger.error(f"Ошибка при импорте модулей: {e}")
+    # Инициализируем базовые значения в случае ошибки
+    data_manager = None
+    santiment = None
 
 # Создаем роутер для обработчиков
 router = Router()
@@ -47,40 +64,35 @@ async def cmd_test_santiment(message: Message):
     Обработчик команды /test_santiment
     Проверяет подключение к Santiment API и отображает статус
     """
-    try:
-        # Получаем менеджер данных
-        data_manager = get_data_manager()
-        
-        # Проверяем, инициализирован ли клиент Santiment
-        if not data_manager.santiment:
-            await message.reply("Клиент Santiment API не инициализирован. Проверьте наличие API-ключа.")
-            return
-        
-        # Отправляем сообщение о начале тестирования
-        status_message = await message.reply("Тестирование подключения к Santiment API...")
-        
-        # Тестируем подключение с помощью получения метрики dev_activity для Bitcoin
-        logger.info("Получение метрики dev_activity для Bitcoin из Santiment API")
-        dev_activity = await data_manager.santiment.get_dev_activity("bitcoin", days=7)
-        
-        if not dev_activity:
-            await status_message.edit_text("Не удалось получить данные из Santiment API. Проверьте API-ключ и подключение.")
-            return
-        
-        # Вычисляем среднее значение активности за последние 7 дней
-        avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
-        
-        # Формируем сообщение с результатами
-        result = (
-            f"✅ Успешное подключение к Santiment API\n\n"
-            f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
-            f"Среднее значение: {avg_value:.2f}\n\n"
-            f"Пример данных за последний день:\n"
-            f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
-            f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
-            f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        await status_message.edit_text(result)
+    if not data_manager or not data_manager.santiment:
+        await message.reply("❌ Не удалось инициализировать Santiment API. Проверьте наличие API-ключа.")
+        return
+    
+    # Отправляем сообщение о начале тестирования
+    status_message = await message.reply("Тестирование подключения к Santiment API...")
+    
+    # Тестируем подключение с помощью получения метрики dev_activity для Bitcoin
+    logger.info("Получение метрики dev_activity для Bitcoin из Santiment API")
+    dev_activity = await data_manager.santiment.get_dev_activity("bitcoin", days=7)
+    
+    if not dev_activity:
+        await status_message.edit_text("Не удалось получить данные из Santiment API. Проверьте API-ключ и подключение.")
+        return
+    
+    # Вычисляем среднее значение активности за последние 7 дней
+    avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
+    
+    # Формируем сообщение с результатами
+    result = (
+        f"✅ Успешное подключение к Santiment API\n\n"
+        f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
+        f"Среднее значение: {avg_value:.2f}\n\n"
+        f"Пример данных за последний день:\n"
+        f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
+        f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
+        f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    await status_message.edit_text(result)
     except Exception as e:
         logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
         await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
@@ -673,8 +685,9 @@ async def cmd_update_interval(message: Message):
     Обработчик команды /update_interval
     Отображает интервал обновления данных
     """
-    # Получаем менеджер данных
-    data_manager = get_data_manager()
+    if not data_manager:
+        await message.reply("⚠️ Менеджер данных не инициализирован")
+        return
     
     if data_manager.last_api_update:
         last_update_str = data_manager.last_api_update.strftime('%Y-%m-%d %H:%M:%S')
@@ -697,8 +710,9 @@ async def cmd_set_interval(message: Message):
     Обработчик команды /set_interval
     Устанавливает новый интервал обновления данных
     """
-    # Получаем менеджер данных
-    data_manager = get_data_manager()
+    if not data_manager:
+        await message.reply("⚠️ Менеджер данных не инициализирован")
+        return
     
     # Получаем аргументы команды
     args = message.text.split()[1:]
@@ -733,4 +747,3 @@ async def cmd_set_interval(message: Message):
         except Exception as e:
             logger.error(f"Ошибка при сохранении нового интервала обновления: {e}")
             await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")n
-```

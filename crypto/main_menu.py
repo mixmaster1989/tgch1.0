@@ -14,22 +14,28 @@ from .data_sources.crypto_data_manager import get_data_manager
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.main_menu')
 
+# Импортируем модули
+try:
+    from aiogram import Router, F
+    from aiogram.types import Message, CallbackQuery
+    from aiogram.filters import Command
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from datetime import datetime
+    
+    # Импортируем менеджер данных
+    from .data_sources.crypto_data_manager import get_data_manager
+    data_manager = get_data_manager()
+    
+    logger.info("Инициализирован main_menu")
+except Exception as e:
+    logger.error(f"Ошибка при импорте модулей: {e}")
+    data_manager = None
+
 # Создаем роутер для обработчиков
 router = Router()
 
 # Глобальная переменная для хранения экземпляра бота
 _bot = None
-
-def set_bot(bot):
-    """
-    Устанавливает экземпляр бота для обработчиков
-    
-    Args:
-        bot: Экземпляр бота aiogram
-    """
-    global _bot
-    _bot = bot
-    logger.info("Бот установлен для главного меню криптомодуля")
 
 @router.message(Command("crypto"))
 async def cmd_crypto(message: Message):
@@ -37,28 +43,32 @@ async def cmd_crypto(message: Message):
     Обработчик команды /crypto
     Показывает главное меню криптомодуля
     """
-    # Создаем клавиатуру
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
-    builder.button(text="🔔 Уведомления", callback_data="crypto_alerts")
-    builder.button(text="📈 Smart Money", callback_data="crypto_smart_money")
-    builder.button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
-    
-    # Получаем менеджер данных
-    data_manager = get_data_manager()
-    
-    # Добавляем кнопку управления ключами только если есть более одного ключа
-    if data_manager.cryptorank_api_keys and len(data_manager.cryptorank_api_keys) > 1:
-        builder.button(text=f"🔄 Управление ключами ({len(data_manager.cryptorank_api_keys)} шт)", callback_data="crypto_key_management")
-    
-    builder.adjust(1)
-    
-    await message.answer(
-        "🪙 *Криптовалютный модуль*\n\n"
-        "Выберите действие из меню ниже:",
-        reply_markup=builder.as_markup(),
-        parse_mode="Markdown"
-    )
+    try:
+        # Создаем клавиатуру
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
+        builder.button(text="🔔 Уведомления", callback_data="crypto_alerts")
+        builder.button(text="📈 Smart Money", callback_data="crypto_smart_money")
+        builder.button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
+        
+        # Получаем менеджер данных
+        data_manager = get_data_manager()
+        
+        # Добавляем кнопку управления ключами только если есть более одного ключа
+        if data_manager.cryptorank_api_keys and len(data_manager.cryptorank_api_keys) > 1:
+            builder.button(text=f"🔄 Управление ключами ({len(data_manager.cryptorank_api_keys)} шт)", callback_data="crypto_key_management")
+        
+        builder.adjust(1)
+        
+        await message.answer(
+            "🪙 *Криптовалютный модуль*\n\n"
+            "Выберите действие из меню ниже:",
+            reply_markup=builder.as_markup(),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка в главном меню: {e}")
+        await message.reply("❌ Произошла ошибка при открытии главного меню")
 
 @router.callback_query(F.data == "crypto_market_overview")
 async def callback_market_overview(callback: CallbackQuery):
@@ -146,10 +156,11 @@ async def callback_back_to_main(callback: CallbackQuery):
 async def callback_key_management(callback: CallbackQuery):
     """
     Обработчик нажатия на кнопку управления ключами
-    Отображает информацию о текущем API-ключе и доступных ключах
+    Отображает информацию о доступных API-ключах
     """
-    # Получаем менеджер данных
-    data_manager = get_data_manager()
+    if not data_manager:
+        await callback.message.reply("⚠️ Менеджер данных не инициализирован")
+        return
     
     # Формируем сообщение с информацией о ключах
     keys_info = ""
@@ -197,3 +208,23 @@ def register_crypto_menu_handlers(dp):
     """
     dp.include_router(router)
     logger.info("Обработчики меню криптомодуля зарегистрированы")
+
+def set_bot(bot):
+    """
+    Устанавливает экземпляр бота для обработчиков
+    
+    Args:
+        bot: Экземпляр бота aiogram
+    """
+    global _bot
+    _bot = bot
+    
+    # Инициализируем сервисы
+    try:
+        if data_manager:
+            logger.info("Бот установлен для менеджера данных")
+            # Передаем бота в сервисы
+            from .notification.alert_service import alert_service
+            alert_service.set_bot(bot)
+    except Exception as e:
+        logger.error(f"Ошибка при установке бота: {e}")

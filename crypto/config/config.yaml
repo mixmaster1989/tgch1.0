@@ -1,6 +1,5 @@
 api:
   cryptorank:
-    # Список API-ключей для Cryptorank
     - key: "016d6a16d3bd018fa02c0ddff345d4c5899584e80923c973a282ca4955a3"  # Первый ключ
     - key: "kb77lvszgqgtxcxs_oikpmfenof6phtzn"  # Второй ключ
     rate_limit:
