@@ -6,7 +6,7 @@ import logging
 import asyncio
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Set
+from typing import List
 
 from ..models import CryptoSignal, SignalType, SignalDirection
 from ..data_sources.cryptorank_api import CryptorankAPI
@@ -16,11 +16,24 @@ from ..user_settings.user_preferences import UserPreferences
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.notification.price_alerts')
 
-class PriceAlertManager:
+
+def get_cryptorank_api_keys() -> List[str]:
     """
-    Класс для управления уведомлениями о ценовых событиях
-    """
+    Получает список API ключей для Cryptorank
     
+    Returns:
+        List[str]: Список API ключей
+    """
+    config = get_config()
+    
+    if config and 'api' in config and 'cryptorank' in config['api'] and 'api_keys' in config['api']['cryptorank']:
+        return config['api']['cryptorank']['api_keys']
+    
+    logger.warning("API ключи для Cryptorank не найдены в конфигурации")
+    return []
+
+
+class PriceAlertManager:
     def __init__(self):
         """
         Инициализирует менеджер ценовых уведомлений
@@ -31,13 +44,16 @@ class PriceAlertManager:
             raise RuntimeError("Ошибка загрузки конфигурации")
         
         try:
-            api_key = config.cryptorank.api_key
-        except AttributeError as e:
-            logger.error(f"Ошибка при получении API ключа: {e}")
+            api_keys = get_cryptorank_api_keys()
+            if not api_keys:
+                raise ValueError("Не настроены API ключи для Cryptorank")
+                
+            self.cryptorank_api = CryptorankAPI(api_keys)
+            self.config = config
+        except Exception as e:
+            logger.error(f"Ошибка инициализации PriceAlertManager: {e}")
             raise
         
-        self.cryptorank_api = CryptorankAPI(api_key)
-        self.config = config
         self.user_preferences = UserPreferences()
         
         # Для отслеживания последних цен и объемов
