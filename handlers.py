@@ -29,6 +29,7 @@ def load_config():
         return config
     except Exception as e:
         logger.error(f"Ошибка при загрузке конфигурации: {e}")
+        # Возвращаем минимальную конфигурацию без ограничений
         return {"channel_id": None, "admin_id": None, "allowed_users": [], "admins": []}
 
 # Сохранение конфигурации
@@ -43,11 +44,18 @@ def save_config(config):
         logger.error(f"Ошибка при сохранении конфигурации: {e}")
         return False
 
+# Загружаем конфигурацию
 config = load_config()
-CHANNEL_ID = config.get("channel_id")
-ADMIN_ID = config.get("admin_id")
-ALLOWED_USERS = config.get("allowed_users", [])
-ADMINS = config.get("admins", [])
+# CHANNEL_ID = config.get("channel_id")  # Отключаем привязку к каналу
+# ADMIN_ID = config.get("admin_id")      # Отключаем админские ограничения
+# ALLOWED_USERS = config.get("allowed_users", [])  # Убираем список разрешенных пользователей
+# ADMINS = config.get("admins", [])       # Убираем список админов
+
+# Вместо этого разрешаем все функции для всех пользователей
+CHANNEL_ID = None
+ADMIN_ID = None
+ALLOWED_USERS = []
+ADMINS = []
 
 # Временное хранилище для сгенерированных постов
 generated_posts = {}

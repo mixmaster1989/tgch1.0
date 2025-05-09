@@ -47,6 +47,30 @@ async def main():
     register_handlers(dp)
     register_promotion_handlers(dp)
     
+    # Добавляем обработчик команды /start
+    @dp.message(Command("start"))
+    async def cmd_start(message: types.Message):
+        """Обработчик команды /start"""
+        logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+        
+        # Создаем клавиатуру с основными функциями
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+        post_button = KeyboardButton("📝 Генерация поста")
+        help_button = KeyboardButton("❓ Помощь")
+        keyboard.add(post_button, help_button)
+        
+        # Отправляем приветственное сообщение
+        welcome_text = (
+            "Добро пожаловать в криптобот!\n\n"
+            "Здесь вы можете:\n"
+            "• Генерировать качественные посты о криптовалютах\n"
+            "• Получать аналитику по крипторынку\n"
+            "• Следить за новостями и трендами\n\n"
+            "Используйте меню ниже для навигации."
+        )
+        
+        await message.answer(welcome_text, reply_markup=keyboard)
+    
     # Регистрация обработчиков криптомодуля
     register_crypto_handlers(dp)
     register_crypto_menu_handlers(dp)

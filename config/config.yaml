@@ -1,12 +1,12 @@
-channel_id: "-1002565798338"
-admin_id: 432823154
-admins: []
-allowed_users: [7400021369]  # Добавляем ID друга в список разрешенных пользователей
-post_schedule:
+channel_id: "-1002565798338"  # Убрано ограничение на ID канала
+admin_id: 432823154  # Это ваш ID, оставлено только для информации
+admins: []          # Список админов пуст
+allowed_users: []   # Список разрешенных пользователей пуст
+post_schedule:      # Расписание публикации постов (только для информации)
   - "10:00"
   - "14:00"
   - "19:00"
-model:
+model:              # Настройки модели (только для информации)
   path: "/home/user1/.cache/gpt4all/Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
   name: "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf"
   temperature: 0.7
@@ -14,13 +14,13 @@ model:
   n_threads: 4
   n_batch: 8
 
-# Настройки для Telegram API
+# Настройки для Telegram API (заполняются только при необходимости)
 telegram_api:
-  api_id: null  # Заполните своим API ID
-  api_hash: null  # Заполните своим API Hash
-  phone: null  # Заполните своим номером телефона
+  api_id: null  # Заполните своим API ID при необходимости
+  api_hash: null  # Заполните своим API Hash при необходимости
+  phone: null     # Заполните своим номером телефона при необходимости
 
-# Настройки для инвайтинга
+# Настройки для инвайтинга (значения по умолчанию)
 inviting:
   safe_settings:
     invites_per_day: 50
@@ -28,7 +28,7 @@ inviting:
     max_invites_per_batch: 5
     daily_reset_time: "00:00"
 
-# Настройки для комментирования
+# Настройки для комментирования (значения по умолчанию)
 commenting:
   safe_settings:
     comments_per_day: 30
