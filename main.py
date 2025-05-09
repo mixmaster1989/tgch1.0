@@ -59,7 +59,7 @@ async def main():
 
     # Добавляем обработчик для команды /crypto
     @dp.message(Command("crypto"))
-    async def crypto_command(message: types.Message):
+    async def crypto_command(message: Message):
         """Обработчик команды /crypto для всех пользователей"""
         # Имитируем вызов криптомодуля
         from crypto.handlers import cmd_crypto_mode
@@ -67,7 +67,7 @@ async def main():
 
     # Добавляем обработчик для команды /crypto_mode
     @dp.message(Command("crypto_mode"))
-    async def crypto_mode_command(message: types.Message):
+    async def crypto_mode_command(message: Message):
         """Обработчик команды /crypto_mode для всех пользователей"""
         # Имитируем вызов криптомодуля
         from crypto.handlers import cmd_crypto_mode
@@ -75,7 +75,7 @@ async def main():
 
     # Добавляем обработчик для кнопки "🪙 Криптомодуль"
     @dp.message(F.text == "🪙 Криптомодуль")
-    async def crypto_module(message: types.Message):
+    async def crypto_module(message: Message):
         """Переход в криптомодуль через кнопку"""
         from crypto.handlers import cmd_crypto_mode
         await cmd_crypto_mode(message)
