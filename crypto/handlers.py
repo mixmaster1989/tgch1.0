@@ -5,11 +5,20 @@
 # Импортируем модули
 import logging
 import asyncio
+from typing import Dict, List, Any, Optional, Tuple, Union
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime
+
+# Импортируем модули
+from crypto.data_sources.crypto_data_manager import CryptoDataManager, get_data_manager
+from crypto.user_settings.user_preferences import UserPreferences, get_user_preferences
+from crypto.notification.alert_service import AlertService, get_alert_service
+from crypto.config.smart_money_config import SmartMoneyConfig, get_smart_money_config
+from crypto.analytics.tradingview_helper import TradingViewHelper
+from crypto.utils.chart_helper import ChartHelper
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.handlers')
@@ -96,8 +105,41 @@ async def cmd_test_santiment(message: Message):
         f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
         f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
         f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     await status_message.edit_text(result)
+
+except Exception as e:
+    logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
+    await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
+
+async def test_santiment_connection(message: Message):
+    """
+    Тестирование подключения к Santiment API
+    """
+    try:
+        await message.reply("📡 Тестирование подключения к Santiment API...")
+
+        # Получаем данные о разработке для тестовой монеты
+        santiment = get_santiment()
+        if not santiment:
+            raise Exception("Santiment клиент не инициализирован")
+
+        slug = "bitcoin"
+        dev_activity = santiment.get_dev_activity(slug, days=30)
+        
+        # Формируем результат
+        result = "✅ Успешно получены данные из Santiment API:\n\n"
+        
+        if dev_activity and len(dev_activity) > 0:
+            result += f"Разработка: {len(dev_activity)} записей\n"
+            result += f"Последнее обновление: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
+            result += f"Значение: {dev_activity[-1]['value']:.2f}"
+        else:
+            result += "Нет данных о разработке"
+        
+        # Редактируем сообщение с результатом
+        await message.edit_text(result)
+
     except Exception as e:
         logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
         await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
@@ -751,4 +793,8 @@ async def cmd_set_interval(message: Message):
             await message.reply(f"✅ Интервал обновления установлен в {new_interval} минут")
         except Exception as e:
             logger.error(f"Ошибка при сохранении нового интервала обновления: {e}")
-            await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")n
+            await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")
+
+    finally:
+        pass
+            
