@@ -27,7 +27,7 @@ class SmartMoneyAnalyzer:
     Класс для анализа сигналов Smart Money
     """
     
-    def __init__(self, data_manager: CryptoDataManager, config_path: str = None):
+    def __init__(self, data_manager: 'CryptoDataManager', config_path: str = None):
         """
         Инициализирует анализатор Smart Money
         
@@ -35,7 +35,14 @@ class SmartMoneyAnalyzer:
             data_manager: Менеджер данных
             config_path: Путь к файлу конфигурации
         """
-        self.data_manager = data_manager
+        # Проверяем, был ли передан data_manager
+        if not data_manager or not hasattr(data_manager, 'api') or not data_manager.api:
+            from crypto.data_sources.crypto_data_manager import get_data_manager
+            self.data_manager = get_data_manager()
+            logger.warning("Используется глобальный data_manager, так как не передан или инициализирован неправильно")
+        else:
+            self.data_manager = data_manager
+        
         self.config = self._load_config(config_path)
         self._last_signals = {}  # Для отслеживания времени последнего сигнала для каждой пары
         
@@ -101,173 +108,172 @@ class SmartMoneyAnalyzer:
                 }
             }
     
-    async def analyze_volume_spikes(self, pair: str, threshold: float = 3.0) -> Optional[CryptoSignal]:
+    async def analyze_volume_spikes(self, limit: int = 10) -> List[CryptoSignal]:
         """
-        Анализирует всплески объема торгов для конкретной пары
+        Анализирует всплески объема торгов
         
-        Args:
-            pair: Торговая пара
-            threshold: Пороговое значение для обнаружения аномалий (в стандартных отклонениях)
-            
         Returns:
-            Optional[CryptoSignal]: Сигнал с информацией о всплеске объема или None
+            List[CryptoSignal]: Список сигналов о всплесках объема
         """
-        symbol = pair.split('/')[0]
-        
-        # Проверяем, не было ли недавно сигнала для этой пары
-        cooldown = self.config["notification"]["cooldown_per_pair"]
-        if self._is_on_cooldown(pair, "volume_spike", cooldown):
-            return None
-        
-        # Получаем данные о монете
-        coin_data = await self.data_manager.get_coin_by_symbol(symbol)
-        
-        if not coin_data:
-            return None
-        
-        # Получаем историю цен
-        price_history = await self.data_manager.get_price_history(symbol, days=30)
-        
-        if not price_history:
-            return None
-        
-        # Вычисляем средний объем за последние 30 дней
-        volumes = [entry['volume'] for entry in price_history]
-        avg_volume = np.mean(volumes)
-        std_volume = np.std(volumes)
-        
-        # Текущий объем
-        current_volume = coin_data.get('volume24h', 0)
-        
-        # Проверяем, не слишком ли мал текущий объем
-        if avg_volume == 0 or current_volume < 1000:  # Минимальный объем для анализа
-            return None
-        
-        # Вычисляем z-оценку для текущего объема
-        z_score = (current_volume - avg_volume) / std_volume
-        
-        # Генерируем сигнал только если z-оценка превышает порог
-        if z_score > threshold:
-            # Рассчитываем процентное изменение цены за последние 24 часа
-            price_change_24h = coin_data.get('price_change_percent_24h', 0)
+        try:
+            # Получаем данные о монетах
+            coins = await self.data_manager.get_coins(limit=limit)
             
-            # Рассчитываем отношение объема к изменению цены
-            volume_to_price_ratio = abs(current_volume) / max(abs(price_change_24h), 0.1)  # Избегаем деления на ноль
+            # Получаем историю цен
+            price_history = await self.data_manager.get_price_history(coins, days=30)
             
-            # Получаем дополнительные метрики из Santiment
-            dev_activity_trend = coin_data.get('dev_activity_trend', 'neutral')
-            social_volume_trend = coin_data.get('social_volume_trend', 'neutral')
-            exchange_flows_trend = coin_data.get('exchange_flows_trend', 'neutral')
-            network_growth_trend = coin_data.get('network_growth_trend', 'neutral')
+            # Вычисляем средний объем за последние 30 дней
+            volumes = [entry['volume'] for entry in price_history]
+            avg_volume = np.mean(volumes)
+            std_volume = np.std(volumes)
             
-            # Определяем силу сигнала на основе тенденций из Santiment
-            strength = 1.0
+            signals = []
             
-            # Увеличиваем силу сигнала, если тенденции положительны
-            if dev_activity_trend == 'positive':
-                strength += 0.3
-            elif dev_activity_trend == 'negative':
-                strength -= 0.3
+            # Проверяем, не было ли недавно сигнала для этой пары
+            cooldown = self.config["notification"]["cooldown_per_pair"]
+            
+            for coin in coins:
+                symbol = coin['symbol']
+                pair = f"{symbol}/USDT"
                 
-            if social_volume_trend == 'positive':
-                strength += 0.4
-            elif social_volume_trend == 'negative':
-                strength -= 0.4
+                if self._is_on_cooldown(pair, "volume_spike", cooldown):
+                    continue
                 
-            if exchange_flows_trend == 'positive':
-                strength += 0.2
-            elif exchange_flows_trend == 'negative':
-                strength -= 0.2
+                # Текущий объем
+                current_volume = coin.get('volume24h', 0)
                 
-            if network_growth_trend == 'positive':
-                strength += 0.3
-            elif network_growth_trend == 'negative':
-                strength -= 0.3
+                # Проверяем, не слишком ли мал текущий объем
+                if avg_volume == 0 or current_volume < 1000:  # Минимальный объем для анализа
+                    continue
                 
-            # Нормализуем силу сигнала в диапазоне [0.5, 2.0]
-            strength = max(0.5, min(strength, 2.0))
+                # Вычисляем z-оценку для текущего объема
+                z_score = (current_volume - avg_volume) / std_volume
+                
+                # Генерируем сигнал только если z-оценка превышает порог
+                if z_score > threshold:
+                    # Рассчитываем процентное изменение цены за последние 24 часа
+                    price_change_24h = coin.get('price_change_percent_24h', 0)
+                    
+                    # Рассчитываем отношение объема к изменению цены
+                    volume_to_price_ratio = abs(current_volume) / max(abs(price_change_24h), 0.1)  # Избегаем деления на ноль
+                    
+                    # Получаем дополнительные метрики из Santiment
+                    dev_activity_trend = coin.get('dev_activity_trend', 'neutral')
+                    social_volume_trend = coin.get('social_volume_trend', 'neutral')
+                    exchange_flows_trend = coin.get('exchange_flows_trend', 'neutral')
+                    network_growth_trend = coin.get('network_growth_trend', 'neutral')
+                    
+                    # Определяем силу сигнала на основе тенденций из Santiment
+                    strength = 1.0
+                    
+                    # Увеличиваем силу сигнала, если тенденции положительны
+                    if dev_activity_trend == 'positive':
+                        strength += 0.3
+                    elif dev_activity_trend == 'negative':
+                        strength -= 0.3
+                        
+                    if social_volume_trend == 'positive':
+                        strength += 0.4
+                    elif social_volume_trend == 'negative':
+                        strength -= 0.4
+                        
+                    if exchange_flows_trend == 'positive':
+                        strength += 0.2
+                    elif exchange_flows_trend == 'negative':
+                        strength -= 0.2
+                        
+                    if network_growth_trend == 'positive':
+                        strength += 0.3
+                    elif network_growth_trend == 'negative':
+                        strength -= 0.3
+                        
+                    # Нормализуем силу сигнала в диапазоне [0.5, 2.0]
+                    strength = max(0.5, min(strength, 2.0))
+                    
+                    # Получаем текущую цену
+                    try:
+                        price = float(coin.get('price', 0))
+                    except (TypeError, ValueError):
+                        price = 1000.0  # Значение по умолчанию
+                    
+                    # Генерируем уровни для торговли
+                    entry_price = price
+                    
+                    # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
+                    # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
+                    if price_change_24h > 0:
+                        direction = SignalDirection.LONG
+                        stop_loss = entry_price * (1 - np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 + np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 + np.random.uniform(0.03, 0.05))
+                        risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
+                    else:
+                        direction = SignalDirection.SHORT
+                        stop_loss = entry_price * (1 + np.random.uniform(0.005, 0.02))
+                        take_profit1 = entry_price * (1 - np.random.uniform(0.01, 0.03))
+                        take_profit2 = entry_price * (1 - np.random.uniform(0.03, 0.05))
+                        risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
+                        timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
+                    
+                    # Генерируем ссылку на TradingView
+                    from .tradingview_helper import generate_tradingview_link
+                    tv_link = generate_tradingview_link(pair)
+                    
+                    # Создаем сигнал
+                    signal = CryptoSignal(
+                        id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
+                        pair=pair,
+                        timestamp=datetime.now(),
+                        signal_type=SignalType.VOLUME_SPIKE,
+                        direction=direction,
+                        price=price,
+                        confidence=min(z_score / threshold, 0.95),
+                        description=f"Всплеск объема для {symbol}: объем в {z_score:.2f}x раз выше среднего. Рекомендация: {direction.name}.",
+                        metadata={
+                            'volume': float(current_volume),
+                            'avg_volume': float(avg_volume),
+                            'std_volume': float(std_volume),
+                            'ratio': float(z_score),
+                            'price_change_24h': float(price_change_24h),
+                            'volume_to_price_ratio': float(volume_to_price_ratio),
+                            'strength': float(strength),
+                            'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
+                            'entry_price': float(entry_price),
+                            'stop_loss': float(stop_loss),
+                            'take_profit1': float(take_profit1),
+                            'take_profit2': float(take_profit2),
+                            'risk_reward': float(risk_reward),
+                            'timeframe': timeframe
+                        }
+                    )
+                    
+                    # Добавляем рекомендацию на основе силы сигнала и тенденций
+                    if strength > 1.5 and all(trend in ['positive', 'neutral'] 
+                                         for trend in [dev_activity_trend, social_volume_trend, 
+                                                      exchange_flows_trend, network_growth_trend]):
+                        signal.recommendation = 'strong_buy'
+                    elif strength > 1.2 and any(trend == 'positive' 
+                                       for trend in [dev_activity_trend, social_volume_trend, 
+                                                    exchange_flows_trend, network_growth_trend]):
+                        signal.recommendation = 'buy'
+                    elif strength < 0.8 and any(trend == 'negative' 
+                                        for trend in [dev_activity_trend, social_volume_trend, 
+                                                     exchange_flows_trend, network_growth_trend]):
+                        signal.recommendation = 'sell'
+                    else:
+                        signal.recommendation = 'hold'
+                    
+                    # Обновляем время последнего сигнала
+                    self._update_last_signal(pair, "volume_spike")
+                    logger.info(f"Создан сигнал всплеска объема для {pair}")
+                    signals.append(signal)
             
-            # Получаем текущую цену
-            try:
-                price = float(coin_data.get('price', 0))
-            except (TypeError, ValueError):
-                price = 1000.0  # Значение по умолчанию
-            
-            # Генерируем уровни для торговли
-            entry_price = price
-            
-            # Для LONG: стоп ниже текущей цены на 0.5-2%, цели выше на 1-5%
-            # Для SHORT: стоп выше текущей цены на 0.5-2%, цели ниже на 1-5%
-            if price_change_24h > 0:
-                direction = SignalDirection.LONG
-                stop_loss = entry_price * (1 - np.random.uniform(0.005, 0.02))
-                take_profit1 = entry_price * (1 + np.random.uniform(0.01, 0.03))
-                take_profit2 = entry_price * (1 + np.random.uniform(0.03, 0.05))
-                risk_reward = round((take_profit1 - entry_price) / (entry_price - stop_loss), 2)
-                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-            else:
-                direction = SignalDirection.SHORT
-                stop_loss = entry_price * (1 + np.random.uniform(0.005, 0.02))
-                take_profit1 = entry_price * (1 - np.random.uniform(0.01, 0.03))
-                take_profit2 = entry_price * (1 - np.random.uniform(0.03, 0.05))
-                risk_reward = round((entry_price - take_profit1) / (stop_loss - entry_price), 2)
-                timeframe = np.random.choice(["5m", "15m", "30m", "1h"])
-            
-            # Генерируем ссылку на TradingView
-            from .tradingview_helper import generate_tradingview_link
-            tv_link = generate_tradingview_link(pair)
-            
-            # Создаем сигнал
-            signal = CryptoSignal(
-                id=f"volume_spike_{pair}_{datetime.now().timestamp()}",
-                pair=pair,
-                timestamp=datetime.now(),
-                signal_type=SignalType.VOLUME_SPIKE,
-                direction=direction,
-                price=price,
-                confidence=min(z_score / threshold, 0.95),
-                description=f"Всплеск объема для {symbol}: объем в {z_score:.2f}x раз выше среднего. Рекомендация: {direction.name}.",
-                metadata={
-                    'volume': float(current_volume),
-                    'avg_volume': float(avg_volume),
-                    'std_volume': float(std_volume),
-                    'ratio': float(z_score),
-                    'price_change_24h': float(price_change_24h),
-                    'volume_to_price_ratio': float(volume_to_price_ratio),
-                    'strength': float(strength),
-                    'tradingview_link': tv_link,  # Добавляем ссылку на TradingView
-                    'entry_price': float(entry_price),
-                    'stop_loss': float(stop_loss),
-                    'take_profit1': float(take_profit1),
-                    'take_profit2': float(take_profit2),
-                    'risk_reward': float(risk_reward),
-                    'timeframe': timeframe
-                }
-            )
-            
-            # Добавляем рекомендацию на основе силы сигнала и тенденций
-            if strength > 1.5 and all(trend in ['positive', 'neutral'] 
-                                 for trend in [dev_activity_trend, social_volume_trend, 
-                                              exchange_flows_trend, network_growth_trend]):
-                signal.recommendation = 'strong_buy'
-            elif strength > 1.2 and any(trend == 'positive' 
-                               for trend in [dev_activity_trend, social_volume_trend, 
-                                            exchange_flows_trend, network_growth_trend]):
-                signal.recommendation = 'buy'
-            elif strength < 0.8 and any(trend == 'negative' 
-                                for trend in [dev_activity_trend, social_volume_trend, 
-                                             exchange_flows_trend, network_growth_trend]):
-                signal.recommendation = 'sell'
-            else:
-                signal.recommendation = 'hold'
-            
-            # Обновляем время последнего сигнала
-            self._update_last_signal(pair, "volume_spike")
-            logger.info(f"Создан сигнал всплеска объема для {pair}")
-            return signal
-        
-        return None
-    
+            return signals
+        except Exception as e:
+            logger.error(f"Ошибка при анализе всплесков объема: {e}")
+            return []
+
     async def analyze_large_orders(self) -> List[CryptoSignal]:
         """
         Анализирует крупные ордера
@@ -856,6 +862,59 @@ class SmartMoneyAnalyzer:
             'exchange': exchange,
             'timestamp': datetime.now().isoformat()
         }
+    
+    async def _check_social_volume_trend(self, slug: str) -> Optional[CryptoSignal]:
+        """
+        Проверяет тенденцию социального объема
+        
+        Returns:
+            Optional[CryptoSignal]: Сигнал или None
+        """
+        if not self.data_manager.santiment:
+            logger.warning("Santiment API не инициализирован")
+            return None
+        
+        try:
+            social_volume_trend = await self.data_manager.santiment.get_social_volume_trend(slug)
+            
+            if social_volume_trend == 'positive':
+                logger.info(f"Положительная тенденция социального объема для {slug}")
+                return CryptoSignal(
+                    id=f"social_volume_positive_{slug}_{datetime.now().timestamp()}",
+                    pair=slug,
+                    timestamp=datetime.now(),
+                    signal_type=SignalType.SOCIAL_VOLUME,
+                    direction=SignalDirection.LONG,
+                    price=0,
+                    confidence=0.8,
+                    description=f"Положительная тенденция социального объема для {slug}",
+                    metadata={
+                        'trend': social_volume_trend,
+                        'tradingview_link': generate_tradingview_link(slug)
+                    }
+                )
+            elif social_volume_trend == 'negative':
+                logger.info(f"Отрицательная тенденция социального объема для {slug}")
+                return CryptoSignal(
+                    id=f"social_volume_negative_{slug}_{datetime.now().timestamp()}",
+                    pair=slug,
+                    timestamp=datetime.now(),
+                    signal_type=SignalType.SOCIAL_VOLUME,
+                    direction=SignalDirection.SHORT,
+                    price=0,
+                    confidence=0.8,
+                    description=f"Отрицательная тенденция социального объема для {slug}",
+                    metadata={
+                        'trend': social_volume_trend,
+                        'tradingview_link': generate_tradingview_link(slug)
+                    }
+                )
+            else:
+                logger.info(f"Нейтральная тенденция социального объема для {slug}")
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка при проверке тенденции социального объема: {e}")
+            return None
 
 # Создаем глобальный экземпляр анализатора
 _analyzer = SmartMoneyAnalyzer()

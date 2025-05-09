@@ -23,13 +23,19 @@ try:
     from datetime import datetime
     
     # Импортируем менеджер данных
-    from .data_sources.crypto_data_manager import get_data_manager
-    data_manager = get_data_manager()
-    
-    logger.info("Инициализирован main_menu")
-except Exception as e:
-    logger.error(f"Ошибка при импорте модулей: {e}")
-    data_manager = None
+    try:
+        from .data_sources.crypto_data_manager import get_data_manager
+        data_manager = get_data_manager()
+        
+        # Проверяем, инициализирован ли менеджер данных корректно
+        if not hasattr(data_manager, 'api') or not data_manager.api:
+            logger.warning("API клиент не инициализирован в data_manager")
+            data_manager = None
+        else:
+            logger.info("Инициализирован main_menu")
+    except Exception as e:
+        logger.error(f"Ошибка при импорте модулей: {e}")
+        data_manager = None
 
 # Создаем роутер для обработчиков
 router = Router()
@@ -47,15 +53,9 @@ async def cmd_crypto(message: Message):
         # Создаем клавиатуру
         builder = InlineKeyboardBuilder()
         builder.button(text="📊 Рыночный обзор", callback_data="crypto_market_overview")
-        builder.button(text="🔔 Уведомления", callback_data="crypto_alerts")
-        builder.button(text="📈 Smart Money", callback_data="crypto_smart_money")
-        builder.button(text="🔍 Поиск монеты", callback_data="crypto_search_coin")
         
-        # Получаем менеджер данных
-        data_manager = get_data_manager()
-        
-        # Добавляем кнопку управления ключами только если есть более одного ключа
-        if data_manager.cryptorank_api_keys and len(data_manager.cryptorank_api_keys) > 1:
+        # Добавляем кнопку управления ключами только если есть несколько API-ключей
+        if data_manager and data_manager.cryptorank_api_keys and len(data_manager.cryptorank_api_keys) > 1:
             builder.button(text=f"🔄 Управление ключами ({len(data_manager.cryptorank_api_keys)} шт)", callback_data="crypto_key_management")
         
         builder.adjust(1)

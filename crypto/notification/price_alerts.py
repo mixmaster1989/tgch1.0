@@ -25,8 +25,10 @@ class PriceAlertManager:
         """
         Инициализирует менеджер ценовых уведомлений
         """
-        self.cryptorank_api = CryptorankAPI()
-        self.config = get_config()
+        config = get_config()
+        api_key = config.cryptorank.api_key
+        self.cryptorank_api = CryptorankAPI(api_key)
+        self.config = config
         self.user_preferences = UserPreferences()
         
         # Для отслеживания последних цен и объемов
