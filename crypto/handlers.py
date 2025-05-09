@@ -44,6 +44,9 @@ async def cmd_crypto_mode(message: Message):
     Обработчик команды /crypto_mode
     Показывает главное меню криптомодуля
     """
+    # Логируем ID пользователя для диагностики
+    logger.info(f"Получен запрос от пользователя с ID: {message.from_user.id}")
+
     # Загружаем конфигурацию для проверки доступа
     import yaml
     import os
@@ -53,9 +56,16 @@ async def cmd_crypto_mode(message: Message):
         with open(config_path, 'r', encoding='utf-8') as file:
             config = yaml.safe_load(file)
         
+        # Логируем загруженную конфигурацию для диагностики
+        logger.info(f"Загруженная конфигурация: {config}")
+        
+        # Получаем настройки доступа
         admin_id = config.get("admin_id")
         admins = config.get("admins", [])
         allowed_users = config.get("allowed_users", [])
+        
+        # Логируем настройки доступа для диагностики
+        logger.info(f"Настройки доступа: admin_id={admin_id}, admins={admins}, allowed_users={allowed_users}")
         
         # Убираем проверку прав доступа, чтобы все пользователи могли использовать криптомодуль
         # Проверяем, имеет ли пользователь доступ к криптомодулю
