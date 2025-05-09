@@ -3,9 +3,6 @@
 """
 
 import logging
-
-logger = logging.getLogger(__name__)
-
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -52,20 +49,23 @@ async def cmd_crypto_mode(message: Message):
     import os
     
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config.yaml')
-    try:
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-        
-        admin_id = config.get("admin_id")
-        admins = config.get("admins", [])
-        allowed_users = config.get("allowed_users", [])
-        
-        # Проверяем, имеет ли пользователь доступ к криптомодулю
-        if message.from_user.id != admin_id and message.from_user.id not in admins and message.from_user.id not in allowed_users:
-            await message.answer("У вас нет доступа к криптомодулю. Обратитесь к администратору бота.")
-            return
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке конфигурации: {e}")
+    
+    # Убираем проверку прав доступа, чтобы все пользователи могли использовать криптомодуль
+    # Проверяем, является ли пользователь админом или имеет доступ
+    # try:
+    #     with open(config_path, 'r', encoding='utf-8') as file:
+    #         config = yaml.safe_load(file)
+    #     
+    #     admin_id = config.get("admin_id")
+    #     admins = config.get("admins", [])
+    #     allowed_users = config.get("allowed_users", [])
+    #     
+    #     # Проверяем, имеет ли пользователь доступ к криптомодулю
+    #     if message.from_user.id != admin_id and message.from_user.id not in admins and message.from_user.id not in allowed_users:
+    #         await message.answer("У вас нет доступа к криптомодулю. Обратитесь к администратору бота.")
+    #         return
+    # except Exception as e:
+    #     logger.error(f"Ошибка при загрузке конфигурации: {e}")
     
     # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
@@ -176,12 +176,15 @@ async def callback_alerts_disable(callback: CallbackQuery):
 
 @router.callback_query(F.data == "crypto_alerts_settings")
 async def callback_alerts_settings(callback: CallbackQuery):
+    """
+    Обработчик настроек уведомлений
+    """
     user_id = callback.from_user.id
-
+    
+    # Получаем текущие настройки
     settings = await user_preferences.get_user_settings(user_id)
-
-    logger.info(f"Current user settings: {settings}")  # Добавляем логирование
-
+    
+    # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
     
     # Кнопки для включения/отключения типов уведомлений
