@@ -769,51 +769,6 @@ async def cmd_set_interval(message: Message):
             return
         
         # Устанавливаем новый интервал
-        data_manager.min_update_interval = timedelta(minutes=new_interval)
-        
-        # Сохраняем новую конфигурацию в файле
-        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
-        try:
-            with open(config_path, 'r') as f:
-                config = yaml.safe_load(f)
-            
-            if config and "background" in config:
-                config["background"]["update_interval"] = new_interval * 60  # Сохраняем в секундах
-                
-                with open(config_path, 'w') as f:
-                    yaml.dump(config, f, default_flow_style=False)
-                
-            logger.info(f"Интервал обновления установлен в {new_interval} минут")
-            await message.reply(f"✅ Интервал обновления установлен в {new_interval} минут")
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении нового интервала обновления: {e}")
-            await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")
-    
-    try:
-        # Получаем данные о цене
-        price_data = await get_crypto_price("BTC")
-        
-        # Получаем данные об объеме торгов
-        volume_data = await get_crypto_volume("BTC")
-        
-        # Получаем данные об активности разработчиков
-        dev_activity = await get_developer_activity("BTC")
-        
-        # Вычисляем среднее значение активности за последние 7 дней
-        avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
-        
-        # Формируем сообщение с результатами
-        result = (
-            f"✅ Успешное подключение к Santiment API\n\n"
-            f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
-            f"Среднее значение: {avg_value:.2f}\n\n"
-            f"Пример данных за последний день:\n"
-            f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
-            f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
-            f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-        await status_message.edit_text(result)
-    
     except Exception as e:
-        logger.error(f"Ошибка при получении данных из Santiment API: {e}", exc_info=True)
-        await status_message.edit_text(f"❌ Ошибка при получении данных из Santiment API: {e}")
+        logger.error(f"Ошибка при установке нового интервала обновления: {e}", exc_info=True)
+        await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")
