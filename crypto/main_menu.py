@@ -1,11 +1,11 @@
 """
-Модуль главного меню криптовалютного функционала
+Модуль для работы с главным меню криптомодуля
 """
 
 import logging
 from typing import Dict, List, Any, Optional
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram.ext import ContextTypes, Router, CommandHandler  # Импортируем Router и CommandHandler
 
 # Импортируем модули
 from crypto.data_sources.crypto_data_manager import CryptoDataManager
@@ -14,15 +14,31 @@ from crypto.notification.alert_service import AlertService
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.main_menu')
 
-# Глобальные переменные
+# Импортируем необходимые модули
 try:
-    data_manager = CryptoDataManager()
-    alert_service = AlertService()
-except Exception as e:
-    logger.error(f"Ошибка при инициализации менеджера данных: {e}")
+    from aiogram import Router, F
+    from aiogram.types import Message, CallbackQuery
+    from aiogram.filters import Command
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from datetime import datetime
+    
+    # Импортируем менеджер данных
+    from .data_sources.crypto_data_manager import get_data_manager
+    data_manager = get_data_manager()
+    
+    # Проверяем, инициализирован ли менеджер данных корректно
+    if not hasattr(data_manager, 'api') or not data_manager.api:
+        logger.warning("API клиент не инициализирован в data_manager")
+        data_manager = None
+        
+except ImportError as ie:
+    logger.error(f"Ошибка импорта необходимых модулей: {ie}")
     data_manager = None
-    alert_service = None
-
+finally:
+    # Убедимся, что все необходимые компоненты инициализированы
+    if not all([data_manager, alert_service]):
+        logger.warning("Не все компоненты инициализированы")
+        
 # Создаем роутер для обработчиков
 router = Router()
 
