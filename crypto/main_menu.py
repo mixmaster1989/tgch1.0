@@ -1,44 +1,28 @@
 """
-Модуль для работы с главным меню криптомодуля
+Модуль главного меню криптовалютного функционала
 """
 
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from datetime import datetime
+from typing import Dict, List, Any, Optional
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
 
-from .data_sources.crypto_data_manager import get_data_manager
+# Импортируем модули
+from crypto.data_sources.crypto_data_manager import CryptoDataManager
+from crypto.notification.alert_service import AlertService
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.main_menu')
 
-# Импортируем необходимые модули
+# Глобальные переменные
 try:
-    from aiogram import Router, F
-    from aiogram.types import Message, CallbackQuery
-    from aiogram.filters import Command
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from datetime import datetime
-    
-    # Импортируем менеджер данных
-    from .data_sources.crypto_data_manager import get_data_manager
-    data_manager = get_data_manager()
-    
-    # Проверяем, инициализирован ли менеджер данных корректно
-    if not hasattr(data_manager, 'api') or not data_manager.api:
-        logger.warning("API клиент не инициализирован в data_manager")
-        data_manager = None
-        
-except ImportError as ie:
-    logger.error(f"Ошибка импорта необходимых модулей: {ie}")
+    data_manager = CryptoDataManager()
+    alert_service = AlertService()
+except Exception as e:
+    logger.error(f"Ошибка при инициализации менеджера данных: {e}")
     data_manager = None
-finally:
-    # Убедимся, что все необходимые компоненты инициализированы
-    if not all([data_manager, alert_service]):
-        logger.warning("Не все компоненты инициализированы")
-        
+    alert_service = None
+
 # Создаем роутер для обработчиков
 router = Router()
 
