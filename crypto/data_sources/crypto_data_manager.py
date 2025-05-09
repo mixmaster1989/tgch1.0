@@ -6,15 +6,17 @@
 from typing import Dict, List, Any, Optional, Tuple, Union
 import logging
 import asyncio
+from datetime import timedelta
 import yaml
 import os
 from pathlib import Path
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Импортируем модули
 from .cryptorank_api import CryptorankAPI
 from .santiment_api import SantimentAPI
+from .crypto_cache import CryptoCache, get_cache, cached  # Добавлен недостающий импорт
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.data_sources.crypto_data_manager')
