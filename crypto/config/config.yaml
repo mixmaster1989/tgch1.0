@@ -1,7 +1,7 @@
 api:
   cryptorank:
     - key: "016d6a16d3bd018fa02c0ddff345d4c5899584e80923c973a282ca4955a3"  # Первый ключ
-    - key: "kb77lvszgqgtxcxs_oikpmfenof6phtzn"  # Второй ключ
+    - key: "a3b7d93f96fe3e3ea8cf6e7fbaec68f77fa730e8a2b3af6151d30e25a629"  # Второй ключ
     rate_limit:
       requests_per_minute: 30
       credits_per_day: 1000
