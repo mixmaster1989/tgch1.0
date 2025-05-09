@@ -79,6 +79,8 @@ def get_main_keyboard(is_admin=False, is_allowed=False, is_additional_admin=Fals
         keyboard.insert(1, [KeyboardButton(text="📢 Опубликовать в канал")])
         keyboard.append([KeyboardButton(text="🚀 Продвижение")])
         keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
+        keyboard.append([KeyboardButton(text="🔍 Smart Money")])  # Добавлена кнопка Smart Money для дополнительных администраторов
+        keyboard.append([KeyboardButton(text="⚙️ Настройки")])
     elif is_allowed:
         keyboard.append([KeyboardButton(text="📈 Крипто анализ")])
     
@@ -317,10 +319,10 @@ async def cmd_generate(message: types.Message):
 async def cmd_publish(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} запустил команду /publish")
     
-    # Проверяем, что команду отправил администратор
-    if message.from_user.id != ADMIN_ID:
+    # Проверяем, что команду отправил администратор или дополнительный администратор
+    if message.from_user.id != ADMIN_ID and message.from_user.id not in ADMINS:
         logger.warning(f"Пользователь {message.from_user.id} попытался использовать команду /publish без прав администратора")
-        await message.answer("Эта команда доступна только администратору.")
+        await message.answer("Эта команда доступна только администраторам.")
         return
     
     await message.answer("Выберите тип поста для публикации:", reply_markup=get_post_type_keyboard())
@@ -328,10 +330,10 @@ async def cmd_publish(message: types.Message):
 @router.message(Command("settings"))
 async def cmd_settings(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} запустил команду /settings")
-    # Проверяем, что команду отправил администратор
-    if message.from_user.id != ADMIN_ID:
+    # Проверяем, что команду отправил администратор или дополнительный администратор
+    if message.from_user.id != ADMIN_ID and message.from_user.id not in ADMINS:
         logger.warning(f"Пользователь {message.from_user.id} попытался использовать команду /settings без прав администратора")
-        await message.answer("Эта команда доступна только администратору.")
+        await message.answer("Эта команда доступна только администраторам.")
         return
     
     await message.answer("Настройки бота:", reply_markup=get_settings_keyboard())
@@ -339,10 +341,10 @@ async def cmd_settings(message: types.Message):
 @router.message(Command("promotion"))
 async def cmd_promotion_handler(message: types.Message):
     logger.info(f"Пользователь {message.from_user.id} запустил команду /promotion")
-    # Проверяем, что команду отправил администратор
-    if message.from_user.id != ADMIN_ID:
+    # Проверяем, что команду отправил администратор или дополнительный администратор
+    if message.from_user.id != ADMIN_ID and message.from_user.id not in ADMINS:
         logger.warning(f"Пользователь {message.from_user.id} попытался использовать команду /promotion без прав администратора")
-        await message.answer("Эта команда доступна только администратору.")
+        await message.answer("Эта команда доступна только администраторам.")
         return
     
     # Вызываем команду /promotion
@@ -647,6 +649,11 @@ async def callback_publish_confirm(callback: types.CallbackQuery):
     
     logger.info(f"Пользователь {callback.from_user.id} подтвердил публикацию поста {post_id}")
     
+    # Проверяем, что пользователь имеет права администратора
+    if callback.from_user.id != ADMIN_ID and callback.from_user.id not in ADMINS:
+        await callback.answer("У вас нет прав для публикации постов")
+        return
+    
     # Проверяем, что пост существует
     if post_id not in generated_posts:
         await callback.answer("Ошибка: пост не найден")
@@ -789,6 +796,12 @@ async def callback_settings_schedule(callback: types.CallbackQuery):
 @router.callback_query(F.data == "settings_admins")
 async def callback_settings_admins(callback: types.CallbackQuery):
     logger.info(f"Пользователь {callback.from_user.id} запросил управление администраторами")
+    
+    # Проверяем, что пользователь имеет права главного администратора
+    # Только главный администратор может управлять другими администраторами
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Только главный администратор может управлять списком администраторов")
+        return
     
     # Загружаем текущий список администраторов
     config = load_config()

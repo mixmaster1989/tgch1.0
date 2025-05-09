@@ -54,10 +54,11 @@ async def cmd_crypto_mode(message: Message):
             config = yaml.safe_load(file)
         
         admin_id = config.get("admin_id")
+        admins = config.get("admins", [])
         allowed_users = config.get("allowed_users", [])
         
         # Проверяем, имеет ли пользователь доступ к криптомодулю
-        if message.from_user.id != admin_id and message.from_user.id not in allowed_users:
+        if message.from_user.id != admin_id and message.from_user.id not in admins and message.from_user.id not in allowed_users:
             await message.answer("У вас нет доступа к криптомодулю. Обратитесь к администратору бота.")
             return
     except Exception as e:
