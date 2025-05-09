@@ -43,67 +43,19 @@ def get_config() -> Dict[str, Any]:
         return _config_cache
     
     try:
+        # Проверяем существование файла конфигурации
         if not CONFIG_PATH.exists():
+            logger.error(f"Файл конфигурации не найден: {CONFIG_PATH}")
             # Создаем конфигурацию по умолчанию
-            default_config = {
-                "api": {
-                    "cryptorank": [
-                        {
-                            "key": "016d6a16d3bd018fa02c0ddff345d4c5899584e80923c973a282ca4955a3",  # Первый API-ключ
-                            "rate_limit": {
-                                "requests_per_minute": 30,
-                                "credits_per_day": 1000
-                            }
-                        },
-                        {
-                            "key": "kb77lvszgqgtxcxs_oikpmfenof6phtzn",  # Второй API-ключ
-                            "rate_limit": {
-                                "requests_per_minute": 30,
-                                "credits_per_day": 1000
-                            }
-                        }
-                    ],
-                    # Добавляем секцию для Santiment API
-                    "santiment": {
-                        "key": "kb77lvszgqgtxcxs_oikpmfenof6phtzn"  # Ваш API-ключ для Santiment API
-                    }
-                },
-                "analytics": {
-                    "volume_spike": {
-                        "threshold": 2.0
-                    }
-                },
-                "notification": {
-                    "max_signals_per_hour": 10,
-                    "cooldown_per_pair": 3600,  # 1 час в секундах
-                    "whitelist_pairs": ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT"],
-                    "price_change": {
-                        "threshold_percent": 5.0,
-                        "time_window_minutes": 60
-                    },
-                    "volume_spike": {
-                        "threshold": 2.0
-                    }
-                },
-                "caching": {
-                    "coins_ttl": 3600,  # Кэшируем список монет на 1 час
-                    "coin_details_ttl": 1800,  # Кэшируем детали монет на 30 минут
-                    "markets_ttl": 7200,  # Кэшируем данные о рынках на 2 часа
-                    "exchanges_ttl": 7200  # Кэшируем данные о биржах на 2 часа
-                },
-                "background": {
-                    "update_interval": 3600,  # Интервал фонового обновления (в секундах)
-                    "retry_interval": 300  # Интервал повторных попыток при ошибках (в секундах)
-                }
-            }
+            return create_default_config()
+
+        # Логируем содержимое файла конфигурации
+        try:
+            with open(CONFIG_PATH, 'r') as f:
+                logger.debug(f"Содержимое файла конфигурации:\n{f.read()}")
+        except Exception as e:
+            logger.error(f"Ошибка чтения файла конфигурации: {e}")
             
-            # Сохраняем конфигурацию по умолчанию
-            with open(CONFIG_PATH, 'w') as f:
-                yaml.dump(default_config, f, default_flow_style=False)
-            
-            logger.info(f"Создана конфигурация по умолчанию: {CONFIG_PATH}")
-            _config_cache = default_config
-            return default_config
     except Exception as e:
         logger.error(f"Ошибка при создании конфигурации: {e}")
         
