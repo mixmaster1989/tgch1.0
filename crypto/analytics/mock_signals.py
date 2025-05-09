@@ -16,7 +16,7 @@ class MockSignalGenerator:
     """
     Класс для генерации тестовых сигналов Smart Money
     """
-    
+   #ебать! 
     @staticmethod
     def generate_volume_spike_signals() -> List[CryptoSignal]:
         """
