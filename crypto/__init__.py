@@ -4,6 +4,11 @@
 
 from aiogram import Router
 
+# Импортируем стандартные библиотеки
+import logging
+import asyncio
+from typing import Any, Optional
+
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto')
 
@@ -11,6 +16,7 @@ logger = logging.getLogger('crypto')
 router = Router()
 
 # Импортируем сервисы
+from .notification.alert_service import AlertService  # Исправленный путь (notification вместо notifications)
 from .user_settings.user_preferences import UserPreferences
 
 # Инициализируем сервисы
@@ -38,7 +44,5 @@ def register_crypto_handlers(dp):
     register_handlers(dp)
 
 # Инициализация менеджера данных при импорте модуля
-from .data_sources.crypto_data_manager import get_data_manager
-data_manager = get_data_manager()
 
 __all__ = ['register_crypto_handlers', 'data_manager']

@@ -42,9 +42,14 @@ router = Router()
 # Глобальная переменная для хранения экземпляра бота
 _bot = None
 
-# Инициализируем сервисы
-alert_service = AlertService()
-user_preferences = UserPreferences()
+# Инициализируем сервисы после всех импортов
+try:
+    alert_service = AlertService()
+    user_preferences = UserPreferences()
+except Exception as e:
+    logger.error(f"Ошибка при инициализации сервисов: {e}")
+    alert_service = None
+    user_preferences = None
 
 def set_bot(bot):
     """
