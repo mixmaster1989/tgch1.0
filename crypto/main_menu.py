@@ -3,11 +3,13 @@
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from datetime import datetime
 
-# Импортируем модули
-from crypto.data_sources.crypto_data_manager import CryptoDataManager
-from crypto.notification.alert_service import AlertService
+from .data_sources.crypto_data_manager import get_data_manager
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.main_menu')
@@ -23,15 +25,6 @@ try:
     # Импортируем менеджер данных
     from .data_sources.crypto_data_manager import get_data_manager
     data_manager = get_data_manager()
-    
-    # Глобальная переменная для хранения экземпляра alert_service
-    global alert_service
-    try:
-        from crypto.notification.alert_service import AlertService
-        alert_service = AlertService()
-    except Exception as e:
-        logger.error(f"Ошибка при инициализации alert_service: {e}")
-        alert_service = None
     
     # Проверяем, инициализирован ли менеджер данных корректно
     if not hasattr(data_manager, 'api') or not data_manager.api:

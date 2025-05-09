@@ -5,20 +5,11 @@
 # Импортируем модули
 import logging
 import asyncio
-from typing import Dict, List, Any, Optional, Tuple, Union
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from datetime import datetime
-
-# Импортируем модули
-from crypto.data_sources.crypto_data_manager import CryptoDataManager, get_data_manager
-from crypto.user_settings.user_preferences import UserPreferences, get_user_preferences
-from crypto.notification.alert_service import AlertService, get_alert_service
-from crypto.config.smart_money_config import SmartMoneyConfig, get_smart_money_config
-from crypto.analytics.tradingview_helper import TradingViewHelper
-from crypto.utils.chart_helper import ChartHelper
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.handlers')
@@ -93,6 +84,15 @@ async def cmd_test_santiment(message: Message):
         await status_message.edit_text("Не удалось получить данные из Santiment API. Проверьте API-ключ и подключение.")
         return
     
+    # Получаем данные о цене
+    price_data = await get_crypto_price("BTC")
+    
+    # Получаем данные об объеме торгов
+    volume_data = await get_crypto_volume("BTC")
+    
+    # Получаем данные об активности разработчиков
+    dev_activity = await get_developer_activity("BTC")
+    
     # Вычисляем среднее значение активности за последние 7 дней
     avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
     
@@ -108,41 +108,35 @@ async def cmd_test_santiment(message: Message):
 
     await status_message.edit_text(result)
 
-except Exception as e:
-    logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
-    await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
-
-async def test_santiment_connection(message: Message):
-    """
-    Тестирование подключения к Santiment API
-    """
+    # Добавляем await для асинхронного вызова
     try:
-        await message.reply("📡 Тестирование подключения к Santiment API...")
-
-        # Получаем данные о разработке для тестовой монеты
-        santiment = get_santiment()
-        if not santiment:
-            raise Exception("Santiment клиент не инициализирован")
-
-        slug = "bitcoin"
-        dev_activity = santiment.get_dev_activity(slug, days=30)
+        # Получаем данные о цене
+        price_data = await get_crypto_price("BTC")
         
-        # Формируем результат
-        result = "✅ Успешно получены данные из Santiment API:\n\n"
+        # Получаем данные об объеме торгов
+        volume_data = await get_crypto_volume("BTC")
         
-        if dev_activity and len(dev_activity) > 0:
-            result += f"Разработка: {len(dev_activity)} записей\n"
-            result += f"Последнее обновление: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
-            result += f"Значение: {dev_activity[-1]['value']:.2f}"
-        else:
-            result += "Нет данных о разработке"
+        # Получаем данные об активности разработчиков
+        dev_activity = await get_developer_activity("BTC")
         
-        # Редактируем сообщение с результатом
-        await message.edit_text(result)
+        # Вычисляем среднее значение активности за последние 7 дней
+        avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
+        
+        # Формируем сообщение с результатами
+        result = (
+            f"✅ Успешное подключение к Santiment API\n\n"
+            f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
+            f"Среднее значение: {avg_value:.2f}\n\n"
+            f"Пример данных за последний день:\n"
+            f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
+            f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
+            f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+        await status_message.edit_text(result)
+    
     except Exception as e:
-        logger.error(f"Ошибка при тестировании подключения к Santiment API: {e}")
-        await message.reply(f"❌ Ошибка при подключении к Santiment API: {str(e)}")
+        logger.error(f"Ошибка при получении данных из Santiment API: {e}", exc_info=True)
+        await status_message.edit_text(f"❌ Ошибка при получении данных из Santiment API: {e}")
 
 @router.message(Command("crypto_mode"))
 async def cmd_crypto_mode(message: Message):
@@ -794,7 +788,32 @@ async def cmd_set_interval(message: Message):
         except Exception as e:
             logger.error(f"Ошибка при сохранении нового интервала обновления: {e}")
             await message.reply(f"❌ Ошибка при установке интервала обновления: {str(e)}")
+    
+    try:
+        # Получаем данные о цене
+        price_data = await get_crypto_price("BTC")
+        
+        # Получаем данные об объеме торгов
+        volume_data = await get_crypto_volume("BTC")
+        
+        # Получаем данные об активности разработчиков
+        dev_activity = await get_developer_activity("BTC")
+        
+        # Вычисляем среднее значение активности за последние 7 дней
+        avg_value = sum(item["value"] for item in dev_activity) / len(dev_activity)
+        
+        # Формируем сообщение с результатами
+        result = (
+            f"✅ Успешное подключение к Santiment API\n\n"
+            f"Получена метрика активности разработчиков (dev_activity) для Bitcoin за последние 7 дней:\n"
+            f"Среднее значение: {avg_value:.2f}\n\n"
+            f"Пример данных за последний день:\n"
+            f"Дата: {datetime.fromisoformat(dev_activity[-1]['timestamp']).strftime('%Y-%m-%d')}\n"
+            f"Значение: {dev_activity[-1]['value']:.2f}\n\n"
+            f"Последнее обновление: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    finally:
-        pass
-            
+        await status_message.edit_text(result)
+    
+    except Exception as e:
+        logger.error(f"Ошибка при получении данных из Santiment API: {e}", exc_info=True)
+        await status_message.edit_text(f"❌ Ошибка при получении данных из Santiment API: {e}")
