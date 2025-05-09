@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Dict, Any, List
 from datetime import timedelta  # Добавлен для использования в конфигурации
 
+# Получаем логгер для модуля
+logger = logging.getLogger('crypto.config')
+
 # Импортируем менеджер данных
 try:
     from ..data_sources.crypto_data_manager import CryptoDataManager, get_data_manager
@@ -17,9 +20,6 @@ try:
 except Exception as e:
     logger.error(f"Ошибка при импорте CryptoDataManager: {e}")
     CryptoDataManager = None
-
-# Получаем логгер для модуля
-logger = logging.getLogger('crypto.config')
 
 # Путь к файлу конфигурации
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
