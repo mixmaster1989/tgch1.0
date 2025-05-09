@@ -6,6 +6,8 @@ from handlers import register_handlers, set_bot
 from handlers_promotion import register_promotion_handlers
 from crypto import register_crypto_handlers
 from crypto.main_menu import register_crypto_menu_handlers
+from aiogram.filters import Command  # Импортируем Command для фильтрации команд
+from aiogram.types import Message, types  # Добавляем импорт типов сообщений
 import logging
 
 # Настройка более подробного логирования
@@ -39,66 +41,73 @@ async def main():
     # Инициализация бота и диспетчера
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
-    
+
     # Сохраняем экземпляр бота в handlers и других модулях
     set_bot(bot)
-    
+
     # Регистрация обработчиков
     register_handlers(dp)
     register_promotion_handlers(dp)
-    
-    # Добавляем обработчик команды /start
-    @dp.message(Command("start"))
-    async def cmd_start(message: types.Message):
-        """Обработчик команды /start"""
-        logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
-        
-        # Создаем клавиатуру с основными функциями
-        keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-        post_button = KeyboardButton("📝 Генерация поста")
-        help_button = KeyboardButton("❓ Помощь")
-        keyboard.add(post_button, help_button)
-        
-        # Отправляем приветственное сообщение
-        welcome_text = (
-            "Добро пожаловать в криптобот!\n\n"
-            "Здесь вы можете:\n"
-            "• Генерировать качественные посты о криптовалютах\n"
-            "• Получать аналитику по крипторынку\n"
-            "• Следить за новостями и трендами\n\n"
-            "Используйте меню ниже для навигации."
-        )
-        
-        await message.answer(welcome_text, reply_markup=keyboard)
-    
+
+    # Добавляем обработчики для криптомодуля
+    from crypto.handlers import register_crypto_handlers
+    from crypto.main_menu import register_crypto_menu_handlers
+
     # Регистрация обработчиков криптомодуля
     register_crypto_handlers(dp)
     register_crypto_menu_handlers(dp)
-    
+
+    # Добавляем обработчик для команды /crypto
+    @dp.message(Command("crypto"))
+    async def crypto_command(message: types.Message):
+        """Обработчик команды /crypto для всех пользователей"""
+        # Имитируем вызов криптомодуля
+        from crypto.handlers import cmd_crypto_mode
+        await cmd_crypto_mode(message)
+
+    # Добавляем обработчик для команды /crypto_mode
+    @dp.message(Command("crypto_mode"))
+    async def crypto_mode_command(message: types.Message):
+        """Обработчик команды /crypto_mode для всех пользователей"""
+        # Имитируем вызов криптомодуля
+        from crypto.handlers import cmd_crypto_mode
+        await cmd_crypto_mode(message)
+
+    # Добавляем обработчик для кнопки "🪙 Криптомодуль"
+    @dp.message(F.text == "🪙 Криптомодуль")
+    async def crypto_module(message: types.Message):
+        """Переход в криптомодуль через кнопку"""
+        from crypto.handlers import cmd_crypto_mode
+        await cmd_crypto_mode(message)
+
+    # Регистрация обработчиков криптомодуля
+    register_crypto_handlers(dp)
+    register_crypto_menu_handlers(dp)
+
     # Устанавливаем экземпляр бота для криптомодуля
     from crypto.handlers import set_bot as crypto_set_bot
     from crypto.main_menu import set_bot as crypto_menu_set_bot
     from crypto.signal_dispatcher import SignalDispatcher
-    
+
     crypto_set_bot(bot)
     crypto_menu_set_bot(bot)
-    
+
     # Инициализируем диспетчер сигналов
     signal_dispatcher = SignalDispatcher()
     signal_dispatcher.set_bot(bot)
     await signal_dispatcher.start()
-    
+
     # Инициализируем менеджер данных
     from crypto.data_sources.crypto_data_manager import get_data_manager
     data_manager = get_data_manager()
     await data_manager.start()
-    
+
     # Инициализируем сервис уведомлений
     from crypto.notification.alert_service import AlertService
     alert_service = AlertService()
     alert_service.set_bot(bot)
     asyncio.create_task(alert_service.start_monitoring())
-    
+
     # Запуск бота
     logger = logging.getLogger(__name__)
     logger.info("Запуск бота...")
