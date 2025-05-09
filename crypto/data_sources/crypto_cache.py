@@ -15,6 +15,52 @@ logger = logging.getLogger('crypto.data_sources.crypto_cache')
 # Тип для кэшируемых данных
 T = TypeVar('T')
 
+# Глобальная переменная для хранения экземпляра кэша
+_cache_instance = None
+
+def get_cache_instance():
+    """
+    Получает глобальный экземпляр кэша
+    """
+    global _cache_instance
+    if _cache_instance is None:
+        _cache_instance = CryptoCache()
+    return _cache_instance
+
+def cached(ttl: int = 3600):
+    """
+    Декоратор для кэширования результатов функций
+    
+    Args:
+        ttl: Время жизни кэша в секундах
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Получаем экземпляр кэша
+            cache = get_cache_instance()
+            
+            # Формируем ключ кэша на основе имени функции и аргументов
+            key = f"{func.__module__}.{func.__name__}:{str(args)}:{str(kwargs)}"
+            
+            # Проверяем, есть ли данные в кэше
+            cached_result = cache.get(key)
+            if cached_result is not None:
+                logger.debug(f"Используем кэшированные данные для {key}")
+                return cached_result
+            
+            # Выполняем оригинальную функцию
+            result = await func(*args, **kwargs)
+            
+            # Сохраняем результат в кэше
+            if result is not None:
+                cache.set(key, result, ttl=ttl)
+                logger.debug(f"Сохранены данные в кэше для {key} на {ttl} секунд")
+            
+            return result
+        return wrapper
+    return decorator
+
 class CryptoCache:
     """
     Класс для кэширования данных о криптовалютах
@@ -113,33 +159,3 @@ def get_cache() -> CryptoCache:
     """
     return _cache
 
-def cached(ttl: int = 3600):
-    """
-    Декоратор для кэширования результатов функций
-    
-    Args:
-        ttl: Время жизни данных в секундах (по умолчанию 1 час)
-    """
-    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            # Создаем ключ на основе имени функции и аргументов
-            cache_key = f"{func.__name__}:{hash(str(args))}-{hash(str(kwargs))}"
-            
-            # Проверяем кэш
-            cache = get_cache()
-            cached_result = cache.get(cache_key)
-            
-            if cached_result is not None:
-                logger.debug(f"Возвращен результат из кэша для {func.__name__}")
-                return cached_result
-            
-            # Если данных нет в кэше, вызываем функцию
-            result = await func(*args, **kwargs)
-            
-            # Сохраняем результат в кэш
-            cache.set(cache_key, result, ttl)
-            
-            return result
-        return wrapper
-    return decorator
