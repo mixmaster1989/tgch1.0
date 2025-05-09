@@ -12,8 +12,7 @@ import yaml
 from pathlib import Path
 
 from ..models import CryptoSignal, SignalType, SignalDirection
-from ..data_sources.crypto_data_manager import get_data_manager
-from ..data_sources.crypto_cache import cached
+from ..data_sources.crypto_data_manager import CryptoDataManager
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.analytics.smart_money_analyzer')
@@ -917,7 +916,8 @@ class SmartMoneyAnalyzer:
             return None
 
 # Создаем глобальный экземпляр анализатора
-_analyzer = SmartMoneyAnalyzer(data_manager=get_data_manager())
+data_manager = CryptoDataManager()  # Placeholder initialization
+_analyzer = SmartMoneyAnalyzer(data_manager=data_manager)
 
 
 def get_smart_money_analyzer() -> SmartMoneyAnalyzer:
