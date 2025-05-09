@@ -6,8 +6,8 @@ from handlers import register_handlers, set_bot
 from handlers_promotion import register_promotion_handlers
 from crypto import register_crypto_handlers
 from crypto.main_menu import register_crypto_menu_handlers
-from aiogram.filters import Command  # Импортируем Command для фильтрации команд
-from aiogram.types import Message  # Исправлено: убран лишний 'types' из импорта
+from aiogram.filters import Command, F  # Добавляем импорт F для фильтрации текстовых сообщений
+from aiogram.types import Message
 import logging
 
 # Настройка более подробного логирования
