@@ -55,15 +55,12 @@ class AlertService:
         Args:
             user_id: ID пользователя
             chat_id: ID чата для отправки уведомлений
-            
-        Returns:
-            bool: True, если пользователь успешно подписан
         """
         try:
             # Получаем настройки пользователя
             settings = await self.user_preferences.get_user_settings(user_id)
             
-            # Добавляем пользователя в список подписчиков
+            # Сохраняем подписку
             self._subscribers[user_id] = {
                 'chat_id': chat_id,
                 'settings': settings
@@ -122,15 +119,15 @@ class AlertService:
     
     async def start_monitoring(self):
         """
-        Запускает фоновый процесс мониторинга и отправки уведомлений
+        Запускает фоновый процесс мониторинга событий для отправки уведомлений
         """
         if self._running:
-            logger.warning("Мониторинг уже запущен")
+            logger.warning("Мониторинг уведомлений уже запущен")
             return
         
         self._running = True
         self._task = asyncio.create_task(self._monitoring_loop())
-        logger.info("Запущен мониторинг важных событий")
+        logger.info("Мониторинг уведомлений запущен")
     
     async def stop_monitoring(self):
         """
@@ -153,142 +150,107 @@ class AlertService:
     
     async def _monitoring_loop(self):
         """
-        Фоновый процесс для мониторинга и отправки уведомлений
+        Основной цикл мониторинга событий для отправки уведомлений
+        """
+        while self._running:
+            try:
+                # Проверяем условия для отправки уведомлений
+                await self._check_and_send_alerts()
+                
+                # Ждем перед следующей проверкой
+                await asyncio.sleep(60)  # Проверяем каждую минуту
+            except Exception as e:
+                logger.error(f"Ошибка в цикле мониторинга уведомлений: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Ждем перед повторной попыткой
+
+    async def _check_and_send_alerts(self):
+        """
+        Проверяет условия для отправки уведомлений и отправляет их
         """
         try:
-            while self._running:
-                try:
-                    # Получаем все уведомления
-                    alerts = await self.price_alert_manager.get_all_alerts()
-                    
-                    if alerts:
-                        logger.info(f"Получено {len(alerts)} уведомлений")
-                        
-                        # Отправляем уведомления подписчикам
-                        await self._send_alerts_to_subscribers(alerts)
-                    
-                    # Ждем перед следующей проверкой
-                    await asyncio.sleep(60)  # Проверяем каждую минуту
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Ошибка в цикле мониторинга: {e}", exc_info=True)
-                    await asyncio.sleep(60)  # Ждем перед повторной попыткой
-        except asyncio.CancelledError:
-            logger.info("Мониторинг отменен")
+            # Получаем все сигналы от менеджера ценовых алертов
+            price_signals = await self.price_alert_manager.check_price_alerts()
+            
+            # Отправляем уведомления всем подписчикам
+            for user_id, subscriber in self._subscribers.items():
+                chat_id = subscriber['chat_id']
+                settings = subscriber['settings']
+                
+                # Фильтруем сигналы по настройкам пользователя
+                filtered_signals = self._filter_signals_by_settings(price_signals, settings)
+                
+                # Отправляем уведомления
+                await self._send_alerts_to_subscriber(chat_id, filtered_signals)
         except Exception as e:
-            logger.error(f"Критическая ошибка в мониторинге: {e}", exc_info=True)
-    
-    async def _send_alerts_to_subscribers(self, alerts: List[CryptoSignal]):
+            logger.error(f"Ошибка при проверке и отправке уведомлений: {e}", exc_info=True)
+
+    def _filter_signals_by_settings(self, signals, settings):
         """
-        Отправляет уведомления подписчикам
+        Фильтрует сигналы по настройкам пользователя
         
         Args:
-            alerts: Список уведомлений
+            signals: Список сигналов
+            settings: Настройки пользователя
         """
-        if not self._bot:
-            logger.error("Бот не установлен для сервиса уведомлений")
+        # Реализация фильтрации сигналов
+        return signals  # Пока возвращаем все сигналы без фильтрации
+
+    async def _send_alerts_to_subscriber(self, chat_id: int, signals: List[CryptoSignal]):
+        """
+        Отправляет уведомления подписчику
+        
+        Args:
+            chat_id: ID чата для отправки
+            signals: Список сигналов для отправки
+        """
+        if not signals:
             return
         
-        # Импортируем здесь, чтобы избежать циклических импортов
-        from .message_formatter import MessageFormatter
-        formatter = MessageFormatter()
-        
-        for user_id, subscriber in self._subscribers.items():
-            chat_id = subscriber['chat_id']
-            settings = subscriber['settings']
-            
-            # Фильтруем уведомления в соответствии с настройками пользователя
-            user_alerts = []
-            for alert in alerts:
-                # Проверяем, отслеживает ли пользователь эту монету
-                coin_symbol = alert.pair.split('/')[0]
-                watched_coins = await self.user_preferences.get_user_watched_coins(user_id)
-                
-                if coin_symbol in watched_coins:
-                    # Проверяем настройки уведомлений
-                    if "price_change" in alert.description.lower() and settings['notifications']['price_change']:
-                        user_alerts.append(alert)
-                    elif "психологический" in alert.description.lower() and settings['notifications']['psychological_levels']:
-                        user_alerts.append(alert)
-                    elif "всплеск объема" in alert.description.lower() and settings['notifications']['volume_spikes']:
-                        user_alerts.append(alert)
-            
-            # Отправляем уведомления пользователю
-            for alert in user_alerts:
-                try:
-                    # Форматируем сообщение
-                    message_data = formatter.format_signal_message(alert)
-                    
-                    # Отправляем сообщение
-                    await self._bot.send_message(
-                        chat_id=chat_id,
-                        text=message_data["text"],
-                        reply_markup=message_data["keyboard"],
-                        parse_mode=message_data["parse_mode"]
-                    )
-                    
-                    logger.info(f"Отправлено уведомление пользователю {user_id} для {alert.pair}")
-                    
-                    # Небольшая задержка между отправками
-                    await asyncio.sleep(0.5)
-                except Exception as e:
-                    logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}", exc_info=True)
-    
-    async def send_test_alert(self, user_id: int, coin_symbol: str) -> bool:
-        """
-        Отправляет тестовое уведомление пользователю
-        
-        Args:
-            user_id: ID пользователя
-            coin_symbol: Символ монеты
-            
-        Returns:
-            bool: True, если уведомление успешно отправлено
-        """
-        if not self._bot:
-            logger.error("Бот не установлен для сервиса уведомлений")
-            return False
-        
-        if user_id not in self._subscribers:
-            logger.error(f"Пользователь {user_id} не подписан на уведомления")
-            return False
+        # Формируем сообщение
+        message = self._format_alert_message(signals)
         
         try:
-            # Создаем тестовое уведомление
-            import uuid
-            from ..models import CryptoSignal, SignalType, SignalDirection
-            
-            test_signal = CryptoSignal(
-                id=str(uuid.uuid4()),
-                pair=f"{coin_symbol}/USDT",
-                timestamp=datetime.now(),
-                signal_type=SignalType.VOLUME_SPIKE,
-                direction=SignalDirection.LONG,
-                price=1000.0,
-                confidence=0.9,
-                description=f"Тестовое уведомление для {coin_symbol}. Это сообщение отправлено для проверки работы системы уведомлений.",
-                metadata={}
-            )
-            
-            # Импортируем здесь, чтобы избежать циклических импортов
-            from .message_formatter import MessageFormatter
-            formatter = MessageFormatter()
-            
-            # Форматируем сообщение
-            message_data = formatter.format_signal_message(test_signal)
-            
             # Отправляем сообщение
-            chat_id = self._subscribers[user_id]['chat_id']
-            await self._bot.send_message(
-                chat_id=chat_id,
-                text=message_data["text"],
-                reply_markup=message_data["keyboard"],
-                parse_mode=message_data["parse_mode"]
+            await self._bot.send_message(chat_id, message)
+            
+            # Делаем небольшую паузу между сообщениями, чтобы не триггерить анти-спам систему
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомлений пользователю {chat_id}: {e}", exc_info=True)
+
+    def _format_alert_message(self, signals: List[CryptoSignal]) -> str:
+        """
+        Форматирует список сигналов в текстовое сообщение
+        
+        Args:
+            signals: Список сигналов
+        """
+        # Реализация форматирования сигналов в текстовое сообщение
+        return "⚠️ Уведомление о важных событиях в криптовалютах:\n\n" + "\n".join(
+            f"{signal.symbol}: {signal.signal_type} - {signal.value}" for signal in signals
+        )
+
+    async def test_alert(self, chat_id: int):
+        """
+        Отправляет тестовое уведомление
+        
+        Args:
+            chat_id: ID чата для отправки
+        """
+        try:
+            # Создаем тестовый сигнал
+            test_signal = CryptoSignal(
+                symbol="BTC",
+                signal_type="price_alert",
+                value=60000.0,
+                timestamp=datetime.now(),
+                confidence=0.95
             )
             
-            logger.info(f"Отправлено тестовое уведомление пользователю {user_id}")
-            return True
+            # Отправляем тестовое уведомление
+            await self._send_alerts_to_subscriber(chat_id, [test_signal])
         except Exception as e:
             logger.error(f"Ошибка при отправке тестового уведомления: {e}", exc_info=True)
-            return False
+
+# Создаем и экспортируем экземпляр сервиса уведомлений
+alert_service = AlertService()

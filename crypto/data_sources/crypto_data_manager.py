@@ -18,6 +18,7 @@ from .cryptorank_api import CryptorankAPI
 from .santiment_api import SantimentAPI
 from .crypto_database import CryptoDatabase
 from .crypto_cache import CryptoCache, get_cache, cached
+from .crypto_websocket import get_websocket
 
 # Получаем логгер для модуля
 logger = logging.getLogger('crypto.data_sources.crypto_data_manager')
