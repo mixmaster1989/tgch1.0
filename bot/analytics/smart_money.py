@@ -12,7 +12,7 @@ class SmartMoneyAnalyzer:
         """
         # Ленивая инициализация ConfidenceCalculator
         if self.confidence_calc is None:
-            from bot.risk.confidence import ConfidenceCalculator
+            from risk.confidence import ConfidenceCalculator  # Используем относительный путь
             self.confidence_calc = ConfidenceCalculator()
         # Пример простого сигнала (в реальности логика будет сложнее)
         signal = {

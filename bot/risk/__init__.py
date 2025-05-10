@@ -4,9 +4,11 @@
 """
 
 # Экспорт основных классов
-from bot.risk.confidence import ConfidenceCalculator
 
 __all__ = [
     'calculate_levels',
     'ConfidenceCalculator'
 ]
+
+# Импорты теперь будут выполняться через относительные пути в каждом модуле
+# Этот файл можно оставить пустым или удалить, если он не используется
