@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # Инициализация компонентов с конфигурацией
     confidence_calculator = ConfidenceCalculator()
     # При использовании ConfidenceCalculator, передавайте конфиг:
-    signal = confidence_calculator.calculate_confidence(signal_data, config['confidence'])
+    signal = confidence_calculator.calculate_confidence(signal_data, config.get('confidence', {}))
     
     # Запуск бота
     bot = Bot()
