@@ -1,3 +1,6 @@
+"""
+Инициализационный файл для пакета notification.
+"""
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 class NotificationHandler:

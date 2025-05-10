@@ -1,19 +1,18 @@
+"""
+Модуль для генерации торговых сигналов на основе Smart Money логики.
+"""
 import pandas as pd
 import numpy as np
+from risk.confidence import ConfidenceCalculator
 
 class SmartMoneyAnalyzer:
     def __init__(self):
-        # Инициализация без создания экземпляра ConfidenceCalculator
-        self.confidence_calc = None  # Инициализируется при первом использовании
-    
+        self.confidence_calc = ConfidenceCalculator()
+
     def generate_signal(self, symbol: str, ohlcv_data: pd.DataFrame) -> dict:
         """
         Генерация торгового сигнала на основе Smart Money концепции
         """
-        # Ленивая инициализация ConfidenceCalculator
-        if self.confidence_calc is None:
-            from risk.confidence import ConfidenceCalculator  # Используем относительный путь
-            self.confidence_calc = ConfidenceCalculator()
         # Пример простого сигнала (в реальности логика будет сложнее)
         signal = {
             'pair': symbol,
@@ -26,7 +25,7 @@ class SmartMoneyAnalyzer:
             'rr_ratio': 0.0,
             'horizon': '2.5h'  # Горизонт прогноза
         }
-        
+
         # Здесь должна быть реализована логика анализа Smart Money
         # Для примера заполним значениями
         signal['confidence'] = self.confidence_calc.calculate_confidence(ohlcv_data)
@@ -35,5 +34,5 @@ class SmartMoneyAnalyzer:
         signal['tp1'] = signal['entry'] * 1.015
         signal['tp2'] = signal['entry'] * 1.03
         signal['rr_ratio'] = ((signal['tp1'] - signal['entry']) + (signal['tp2'] - signal['entry'])) / (signal['entry'] - signal['stop'])
-        
+
         return signal
