@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 import yaml
+from bot.risk.confidence import ConfidenceCalculator
 
 def load_config(config_path='configs/thresholds.yaml'):
     """Загружает конфигурацию из YAML файла"""
