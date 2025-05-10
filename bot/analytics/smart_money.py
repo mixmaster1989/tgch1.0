@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from risk.confidence import ConfidenceCalculator
+from bot.risk.confidence import ConfidenceCalculator  # Используем полный путь
 
 class SmartMoneyAnalyzer:
     def __init__(self):
