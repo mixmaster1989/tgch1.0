@@ -5,4 +5,4 @@ numpy
 websockets
 pyyaml
 scikit-learn
-python-dotenv  # Для загрузки переменных окружения из .env файла
+python-dotenv  # Для загрузки переменных окруewrweqrweqrwqerwrжения из .env файла
