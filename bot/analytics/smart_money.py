@@ -1,15 +1,19 @@
 import pandas as pd
 import numpy as np
-from bot.risk.confidence import ConfidenceCalculator  # Используем полный путь
 
 class SmartMoneyAnalyzer:
     def __init__(self):
-        self.confidence_calc = ConfidenceCalculator()
+        # Инициализация без создания экземпляра ConfidenceCalculator
+        self.confidence_calc = None  # Инициализируется при первом использовании
     
     def generate_signal(self, symbol: str, ohlcv_data: pd.DataFrame) -> dict:
         """
         Генерация торгового сигнала на основе Smart Money концепции
         """
+        # Ленивая инициализация ConfidenceCalculator
+        if self.confidence_calc is None:
+            from bot.risk.confidence import ConfidenceCalculator
+            self.confidence_calc = ConfidenceCalculator()
         # Пример простого сигнала (в реальности логика будет сложнее)
         signal = {
             'pair': symbol,
