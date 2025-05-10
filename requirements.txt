@@ -1,8 +1,0 @@
-python-telegram-bot==20.0
-requests
-pandas
-numpy
-websockets
-pyyaml
-scikit-learn
-python-dotenv  # Для загрузки переменных окруewrweqrweqrwqerwrжения из .env файла
