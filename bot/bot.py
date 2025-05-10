@@ -4,6 +4,10 @@ import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Добавляем корневую директорию в PYTHONPATH
+import pathlib
+sys.path.append(str(pathlib.Path(__file__).parent.parent))
+
 # Загрузка переменных окружения
 load_dotenv()
 
