@@ -3,10 +3,11 @@
 Содержит расчет уровней и оценку уверенностиsadfsadfsadf
 """
 
-# Пустой файл для инициализации пакета
-
 # Экспорт основных классов
 from bot.risk.levels_calculator import calculate_levels
-from .confidence import ConfidenceCalculator
+from bot.risk.confidence import ConfidenceCalculator
 
-__all__ = ['ConfidenceCalculator']
+__all__ = [
+    'calculate_levels',
+    'ConfidenceCalculator'
+]
