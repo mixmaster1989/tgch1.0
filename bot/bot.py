@@ -3,8 +3,14 @@ import sys
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-#edklfgjsedklffsdlfjk
-# Добавляем корневую директорию в PYTHONPATHsdfgsdfgsdfgsdfg
+import yaml
+
+def load_config(config_path='configs/thresholds.yaml'):
+    """Загружает конфигурацию из YAML файла"""
+    with open(config_path, 'r') as file:
+        return yaml.safe_load(file)
+
+# Добавляем корневую директорию в PYTHONPATH
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
@@ -46,5 +52,14 @@ async def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Запуск основного цикла
+    config = load_config()
+    
+    # Инициализация компонентов с конфигурацией
+    confidence_calculator = ConfidenceCalculator()
+    # При использовании ConfidenceCalculator, передавайте конфиг:
+    signal = confidence_calculator.calculate_confidence(signal_data, config['confidence'])
+    
+    # Запуск бота
+    bot = Bot()
+    # Инициализация и запуск бота
     asyncio.run(main())
