@@ -1,11 +1,11 @@
 import os
 import yaml
 from telegram.ext import Application
-from dotenv import load_dotenv  # Добавлен импорт для загрузки .env
+from dotenv import load_dotenv
 
 # Загрузка переменных окружения из .env или .env.local файла
 load_dotenv()
-load_dotenv('.env.local')  # Добавлена поддержка локального файла с секретами
+load_dotenv('.env.local')
 
 # Загрузка конфигурации
 with open('configs/thresholds.yaml', 'r') as f:
@@ -30,18 +30,29 @@ async def main():
         raise ValueError("MEXC API ключи не найдены в .env")
     
     # Инициализация основных компонентов
-    sm_analyzer = SmartMoneyAnalyzer()
-    mexc_ws = MEXCWebSocket()
-    signal_formatter = SignalFormatter()
-    levels_calculator = LevelsCalculator()
+    try:
+        sm_analyzer = SmartMoneyAnalyzer()
+        mexc_ws = MEXCWebSocket()
+        signal_formatter = SignalFormatter()
+        levels_calculator = LevelsCalculator()
+    except Exception as e:
+        print(f"Ошибка инициализации компонентов: {e}")
+        raise
     
     # Создание и запуск бота
-    application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
-    # Здесь будет реализация обработчиков команд
-    
-    print("Бот запущен и готов к работе!")
-    return application
+    try:
+        application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+        print("Бот запущен и готов к работе!")
+        return application
+    except Exception as e:
+        print(f"Ошибка запуска бота: {e}")
+        raise
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nБот остановлен пользователем.")
+    except Exception as e:
+        print(f"Непредвиденная ошибка: {e}")
