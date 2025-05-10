@@ -12,6 +12,14 @@ with open('configs/thresholds.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # Импорты компонентов
+try:
+    from analytics.smart_money import SmartMoneyAnalyzer
+    from data.websocket_mexc import MEXCWebSocket
+    from notification.signal_formatter import SignalFormatter
+    from risk.levels_calculator import LevelsCalculator
+except ImportError as e:
+    print(f"Ошибка импорта: {e}")
+    raise
 
 async def main():
     # Проверка .env
