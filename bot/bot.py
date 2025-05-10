@@ -3,8 +3,9 @@ import yaml
 from telegram.ext import Application
 from dotenv import load_dotenv  # Добавлен импорт для загрузки .env
 
-# Загрузка переменных окружения из .env файла
+# Загрузка переменных окружения из .env или .env.local файла
 load_dotenv()
+load_dotenv('.env.local')  # Добавлена поддержка локального файла с секретами
 
 # Загрузка конфигурации
 with open('configs/thresholds.yaml', 'r') as f:
