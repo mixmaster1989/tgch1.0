@@ -1,7 +1,12 @@
-# Основные зависимости для Smart Money Crypto Trading Bot
+# Обновленные зависимости для Smart Money Crypto Trading Bot
 
-telegram==2.0.3
+python-dotenv==1.0.0
+pyyaml==6.0
 websockets==10.4
 requests==2.31.0
 numpy==1.26.0
-python-dotenv==1.0.0
+pandas==2.1.0
+fastapi==0.95.0
+uvicorn==0.21.1
+tradingview-ta==3.1.0
+python-telegram-bot==20.0
