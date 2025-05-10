@@ -3,7 +3,7 @@ import sys
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-
+#edklfgjsedklffsdlfjk
 # Добавляем корневую директорию в PYTHONPATH
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
