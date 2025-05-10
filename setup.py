@@ -15,11 +15,12 @@ setup(
         'fastapi',
         'uvicorn',
         'tradingview-ta',
-        'python-telegram-bot'
+        'python-telegram-bot==20.0'
     ],
     entry_points={
         'console_scripts': [
             'run-bot=bot.bot:main'
         ]
-    }
+    },
+    python_requires='>=3.8'
 )
