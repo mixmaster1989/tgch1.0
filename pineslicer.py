@@ -4,13 +4,8 @@ import json
 import os
 import webbrowser
 from datetime import datetime
-from tkinter import scrolledtext
 import threading
-import time, colorchooser
-import json
-import os
-import webbrowser
-from datetime import datetime
+import time
 
 # Описание параметров для каждого типа индикатора
 INDICATOR_PARAMS = {
@@ -1292,7 +1287,14 @@ class PineSlicerApp(tk.Tk):
         # Подсветка комментариев
         start = "1.0"
         while True:
-            start = self.text_editor.search(r'//.*
+            start = self.text_editor.search(r'//.*', start, "end", regexp=True)
+            if not start:
+                break
+            line = int(start.split('.')[0])
+            end = f"{line}.end"
+            self.text_editor.tag_add("comment", start, end)
+            start = f"{line+1}.0"
+        
 
     def generate_and_test(self):
         selected_blocks = self.get_selected_blocks()
@@ -1451,11 +1453,17 @@ class PineSlicerApp(tk.Tk):
 
     def clear_script(self):
         self.text_editor.delete("1.0", "end")
-
-if __name__ == "__main__":
-    app = PineSlicerApp()
-    app.mainloop()
-, start, "end", regexp=True)
+        
+    def highlight_syntax(self, event=None):
+        """Подсвечивает синтаксис в редакторе"""
+        # Очищаем все теги
+        for tag in ["keyword", "function", "string", "comment", "number"]:
+            self.text_editor.tag_remove(tag, "1.0", "end")
+        
+        # Подсветка комментариев
+        start = "1.0"
+        while True:
+            start = self.text_editor.search(r'//.*', start, "end", regexp=True)
             if not start:
                 break
             line = int(start.split('.')[0])
@@ -1474,6 +1482,10 @@ if __name__ == "__main__":
             end = f"{start}+{len(match)}c"
             self.text_editor.tag_add("number", start, end)
             start = end
+
+if __name__ == "__main__":
+    app = PineSlicerApp()
+    app.mainloop()
     
     def load_presets(self):
         """Загружает сохраненные пресеты"""
@@ -2095,16 +2107,16 @@ if __name__ == "__main__":
     def clear_script(self):
         self.text_editor.delete("1.0", "end")
 
-if __name__ == "__main__":
-    app = PineSlicerApp()
-    app.mainloop()
-, start, "end", regexp=True)
-            if not start:
-                break
-            line = int(start.split('.')[0])
-            end = f"{line}.end"
-            self.text_editor.tag_add("comment", start, end)
-            start = f"{line+1}.0"
+#if __name__ == "__main__":
+#    app = PineSlicerApp()
+#    app.mainloop()
+
+#        if not start:
+#           break
+#        line = int(start.split('.')[0])
+#        end = f"{line}.end"
+#        self.text_editor.tag_add("comment", start, end)
+#       start = f"{line+1}.0"
 
     def generate_and_test(self):
         selected_blocks = self.get_selected_blocks()
@@ -2264,16 +2276,7 @@ if __name__ == "__main__":
     def clear_script(self):
         self.text_editor.delete("1.0", "end")
 
-if __name__ == "__main__":
-    app = PineSlicerApp()
-    app.mainloop()
-, start, "end", regexp=True)
-            if not start:
-                break
-            line = int(start.split('.')[0])
-            end = f"{line}.end"
-            self.text_editor.tag_add("comment", start, end)
-            start = f"{line+1}.0"
+
         
         # Подсветка чисел
         start = "1.0"
