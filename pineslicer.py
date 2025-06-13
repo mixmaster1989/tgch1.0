@@ -3724,30 +3724,39 @@ if __name__ == "__main__":
         return presets
     
     def save_preset(self):
-        name = self.preset_var.get()
-        if not name:
+        preset_name = self.preset_var.get()
+        if not preset_name:
             messagebox.showwarning("Предупреждение", "Введите имя пресета")
             return
         
-        selected_blocks = self.get_selected_blocks()
-        preset_data = {
-            "blocks": [block["key"] for block in selected_blocks],
-            "params": {param: var.get() for param, var in self.block_param_vars.items()}
-        }
+        # Собираем выбранные блоки и их параметры
+        selected_blocks = {}
+        for block_key, var in self.block_vars.items():
+            if var.get():
+                block_params = {}\n                # Собираем параметры для этого блока
+                for param in self.block_param_vars:
+                    # Проверяем, принадлежит ли параметр текущему блоку
+                    block = next((b for b in BLOCKS if b["key"] == block_key), None)
+                    if block and any(p["name"] == param for p in block["params"]):
+                        block_params[param] = self.block_param_vars[param].get()
+                
+                selected_blocks[block_key] = block_params
         
-        if not hasattr(self, "presets"):
-            self.presets = {}
-            
-        self.presets[name] = preset_data
+        # Сохраняем пресет
+        self.presets[preset_name] = selected_blocks
+        
+        # Сохраняем в файл
         try:
             with open("presets.json", "w") as f:
                 json.dump(self.presets, f, indent=2)
-            messagebox.showinfo("Успех", f"Пресет '{name}' сохранен!")
+            
+            # Обновляем список пресетов в комбобоксе
             self.preset_combo["values"] = list(self.presets.keys())
-            self.current_preset = name
+            
+            messagebox.showinfo("Успех", f"Пресет '{preset_name}' успешно сохранен")
+            self.status_var.set(f"Сохранен пресет: {preset_name}")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить пресет: {str(e)}")
-            return
 
     def load_preset(self):
         preset_name = self.preset_var.get()
