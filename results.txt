@@ -1,0 +1,171 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.2, pytest-8.4.0, pluggy-1.6.0 -- C:\Users\New\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+PyQt5 5.15.9 -- Qt runtime 5.15.2 -- Qt compiled 5.15.2
+rootdir: C:\Users\New\tgch1.0-3
+plugins: anyio-4.9.0, qt-4.4.0
+collecting ... collected 31 items
+
+tests/test_codegen.py::test_generate_code_for_block[\u0418\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440] FAILED [  3%]
+tests/test_codegen.py::test_generate_code_for_block[\u0421\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0430\u044f \u0441\u0440\u0435\u0434\u043d\u044f\u044f] FAILED [  6%]
+tests/test_codegen.py::test_generate_code_for_block[RSI] FAILED          [  9%]
+tests/test_codegen.py::test_generate_code_for_block[MACD] FAILED         [ 12%]
+tests/test_codegen.py::test_generate_code_for_block[Bollinger Bands] FAILED [ 16%]
+tests/test_codegen.py::test_generate_code_for_block[Stochastic] FAILED   [ 19%]
+tests/test_codegen.py::test_generate_code_for_block[ATR] FAILED          [ 22%]
+tests/test_codegen.py::test_generate_code_for_block[\u0418\u043c\u043f\u0443\u043b\u044c\u0441] FAILED [ 25%]
+tests/test_codegen.py::test_generate_code_for_block[CCI] FAILED          [ 29%]
+tests/test_codegen.py::test_generate_code_for_block[\u0423\u0441\u043b\u043e\u0432\u0438\u0435] FAILED [ 32%]
+tests/test_codegen.py::test_generate_code_for_block[\u041f\u0435\u0440\u0435\u0441\u0435\u0447\u0435\u043d\u0438\u0435] FAILED [ 35%]
+tests/test_codegen.py::test_generate_code_for_block[\u0423\u0440\u043e\u0432\u0435\u043d\u044c] FAILED [ 38%]
+tests/test_codegen.py::test_generate_code_for_block[\u041e\u0431\u044a\u0435\u043c] FAILED [ 41%]
+tests/test_codegen.py::test_generate_code_for_block[\u0422\u0440\u0435\u043d\u0434] FAILED [ 45%]
+tests/test_codegen.py::test_generate_code_for_block[\u0424\u0438\u043b\u044c\u0442\u0440] FAILED [ 48%]
+tests/test_codegen.py::test_generate_code_for_block[\u0410\u043b\u0435\u0440\u0442] FAILED [ 51%]
+tests/test_codegen.py::test_generate_code_for_block[\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044f] FAILED [ 54%]
+tests/test_codegen.py::test_generate_code_for_block[\u041e\u0440\u0434\u0435\u0440] FAILED [ 58%]
+tests/test_codegen.py::test_generate_code_for_block[\u0420\u0438\u0441\u043a] FAILED [ 61%]
+tests/test_codegen.py::test_generate_code_for_block[\u0412\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f] FAILED [ 64%]
+
+================================== FAILURES ===================================
+_ test_generate_code_for_block[\u0418\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440] _
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Основные настройки индикатора\nНазвание = Мой первый индикатор\nВременной интервал = 1d\nТип графика = candle\n// Настройки индикатора\nindicator("Мой первый индикатор", overlay=true)\ntimeframe = "1d"\nchart_type = "candle"\n'
+_ test_generate_code_for_block[\u0421\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0430\u044f \u0441\u0440\u0435\u0434\u043d\u044f\u044f] _
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Скользящая средняя\nma = ta.ema(close, 14)\nplot(ma, color=color.blue, title="MA")\n'
+______________________ test_generate_code_for_block[RSI] ______________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// RSI\nrsi = ta.rsi(close, 14)\nplot(rsi, color=color.purple, title="RSI")\n'
+_____________________ test_generate_code_for_block[MACD] ______________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// MACD\nmacd_line = na\nsignal_line = na\nhist = na\n[macd_line, signal_line, hist] = ta.macd(close, 12, 26, 9)\nplot(macd_line, color=color.blue, title="MACD")\nplot(signal_line, color=color.red, title="Signal")\nplot(hist, color=color.green, title="Histogram")\n'
+________________ test_generate_code_for_block[Bollinger Bands] ________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Полосы Боллинджера\nmiddle = na\nupper = na\nlower = na\n[middle, upper, lower] = ta.bb(close, 20, 2.0)\nplot(middle, color=color.blue, title="Basis")\nplot(upper, color=color.red, title="Upper")\nplot(lower, color=color.green, title="Lower")\n'
+__________________ test_generate_code_for_block[Stochastic] ___________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Стохастик\nk = ta.stoch(close, high, low, 14)\nd = ta.sma(k, 3)\nplot(k, color=color.blue, title="%K")\nplot(d, color=color.red, title="%D")\n'
+______________________ test_generate_code_for_block[ATR] ______________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// ATR\natr = ta.atr(14)\nplot(atr, color=color.blue, title="ATR")\n'
+__ test_generate_code_for_block[\u0418\u043c\u043f\u0443\u043b\u044c\u0441] ___
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Импульс\nimpulse = close - close[14]\nplot(impulse, color=color.blue, title="Impulse")\n'
+______________________ test_generate_code_for_block[CCI] ______________________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// CCI\ncci = ta.cci(hlc3, 20)\nplot(cci, color=color.blue, title="CCI")\n'
+__ test_generate_code_for_block[\u0423\u0441\u043b\u043e\u0432\u0438\u0435] ___
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Условие\nif close > open\nlabel.new(bar_index, high, "Сигнал!", color=color.green)\n'
+_ test_generate_code_for_block[\u041f\u0435\u0440\u0435\u0441\u0435\u0447\u0435\u043d\u0438\u0435] _
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Пересечение\ncross = ta.crossover(ma1, ma2)\nif cross\nlabel.new(bar_index, high, "Пересечение!", color=color.blue)\n'
+__ test_generate_code_for_block[\u0423\u0440\u043e\u0432\u0435\u043d\u044c] ___
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Уровень\nhline(0, "Уровень 0", color=color.red, linestyle=hline.style_solid)\n'
+________ test_generate_code_for_block[\u041e\u0431\u044a\u0435\u043c] _________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Объём\nvol_ma = ta.sma(volume, 20)\nif volume > vol_ma * 2.0\nlabel.new(bar_index, high, "Большой объём!", color=color.purple)\nplot(vol_ma, color=color.blue, title="Volume")\n'
+________ test_generate_code_for_block[\u0422\u0440\u0435\u043d\u0434] _________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Тренд\nma = ta.sma(close, 20)\nif math.abs(close - ma) > ma * 2.0 / 100\nlabel.new(bar_index, high, "Сильный тренд!", color=color.orange)\nplot(ma, color=color.blue, title="Trend")\n'
+_____ test_generate_code_for_block[\u0424\u0438\u043b\u044c\u0442\u0440] ______
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Фильтр\nfilter = volume > 0\nif filter\nlabel.new(bar_index, low, "Фильтр пройден", color=color.gray)\n'
+________ test_generate_code_for_block[\u0410\u043b\u0435\u0440\u0442] _________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Алерт\nalertcondition(close > open, "Алерт!", alert.freq_once)\n'
+_ test_generate_code_for_block[\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044f] _
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Стратегия\nstrategy("Моя стратегия", overlay=true, initial_capital=10000,\n         commission_type=strategy.commission.percent, commission_value=0.1)\n'
+________ test_generate_code_for_block[\u041e\u0440\u0434\u0435\u0440] _________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Ордер\nstrategy.entry("Long", strategy.long, qty=1)\n'
+___________ test_generate_code_for_block[\u0420\u0438\u0441\u043a] ____________
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Риск\nstrategy.risk.max_drawdown(1.0)\nstrategy.risk.max_intraday_loss(2.0)\nstrategy.risk.max_intraday_filled_orders(4.0)\n'
+_ test_generate_code_for_block[\u0412\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f] _
+tests\test_codegen.py:20: in test_generate_code_for_block
+    assert "//@version=5" in code
+E   assert '//@version=5' in '//@version = 5\nindicator("My Indicator", overlay=true)\n\n// Визуализация\nplot(ma, "MA", color=color.blue, linewidth=2, style=plot.style_solid)\n'
+============================== warnings summary ===============================
+ui.py:38
+  C:\Users\New\tgch1.0-3\ui.py:38: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class TemplateDialog(QDialog):
+
+ui.py:111
+  C:\Users\New\tgch1.0-3\ui.py:111: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class BlockSelectDialog(QDialog):
+
+ui.py:181
+  C:\Users\New\tgch1.0-3\ui.py:181: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class BlockWidget(QFrame):
+
+ui.py:310
+  C:\Users\New\tgch1.0-3\ui.py:310: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class WizardDialog(QWizard):
+
+ui.py:353
+  C:\Users\New\tgch1.0-3\ui.py:353: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class Step1Page(QWizardPage):
+
+ui.py:366
+  C:\Users\New\tgch1.0-3\ui.py:366: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class Step2Page(QWizardPage):
+
+ui.py:400
+  C:\Users\New\tgch1.0-3\ui.py:400: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class Step3Page(QWizardPage):
+
+ui.py:430
+  C:\Users\New\tgch1.0-3\ui.py:430: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class ExampleDialog(QDialog):
+
+ui.py:571
+  C:\Users\New\tgch1.0-3\ui.py:571: DeprecationWarning: sipPyTypeDict() is deprecated, the extension module should use sipPyTypeDictRef() instead
+    class MainWindow(QMainWindow):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0418\u043d\u0434\u0438\u043a\u0430\u0442\u043e\u0440]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0421\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0430\u044f \u0441\u0440\u0435\u0434\u043d\u044f\u044f]
+FAILED tests/test_codegen.py::test_generate_code_for_block[RSI] - assert '//@...
+FAILED tests/test_codegen.py::test_generate_code_for_block[MACD] - assert '//...
+FAILED tests/test_codegen.py::test_generate_code_for_block[Bollinger Bands]
+FAILED tests/test_codegen.py::test_generate_code_for_block[Stochastic] - asse...
+FAILED tests/test_codegen.py::test_generate_code_for_block[ATR] - assert '//@...
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0418\u043c\u043f\u0443\u043b\u044c\u0441]
+FAILED tests/test_codegen.py::test_generate_code_for_block[CCI] - assert '//@...
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0423\u0441\u043b\u043e\u0432\u0438\u0435]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u041f\u0435\u0440\u0435\u0441\u0435\u0447\u0435\u043d\u0438\u0435]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0423\u0440\u043e\u0432\u0435\u043d\u044c]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u041e\u0431\u044a\u0435\u043c]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0422\u0440\u0435\u043d\u0434]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0424\u0438\u043b\u044c\u0442\u0440]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0410\u043b\u0435\u0440\u0442]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044f]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u041e\u0440\u0434\u0435\u0440]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0420\u0438\u0441\u043a]
+FAILED tests/test_codegen.py::test_generate_code_for_block[\u0412\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f]
+!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 20 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+======================= 20 failed, 9 warnings in 2.42s ========================

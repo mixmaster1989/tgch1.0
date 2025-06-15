@@ -1,0 +1,15 @@
+2025-06-15 16:16:22,264 ERROR:Traceback (most recent call last):
+  File "C:\Users\New\tgch1.0-3\ui.py", line 805, in generate_code
+    code = generate_code(self.blocks)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\New\tgch1.0-3\code_gen.py", line 248, in generate_code
+    is_valid, error = validate_code("\n".join(code))
+    ^^^^^^^^^^^^^^^
+ValueError: not enough values to unpack (expected 2, got 0)
+
+2025-06-15 16:18:41,125 ERROR:Traceback (most recent call last):
+  File "C:\Users\New\tgch1.0-3\ui.py", line 808, in generate_code
+    errors = validate_code(code)
+             ^^^^^^^^^^^^^
+NameError: name 'validate_code' is not defined
+
