@@ -13,3 +13,9 @@ ValueError: not enough values to unpack (expected 2, got 0)
              ^^^^^^^^^^^^^
 NameError: name 'validate_code' is not defined
 
+2025-06-15 22:33:36,778 ERROR:Traceback (most recent call last):
+  File "c:\Users\New\tgch1.0-3\tgch1.0\error_handler.py", line 58, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: MainWindow.generate_code() takes 1 positional argument but 2 were given
+

@@ -1,0 +1,16 @@
+Эта директория содержит изображения примеров индикаторов.
+Для полноценной работы приложения рекомендуется добавить сюда изображения с именами:
+- ema14.png
+- rsi14.png
+- macd.png
+- bb20.png
+- stoch.png
+- atr14.png
+- cci20.png
+- volma20.png
+- ma50.png
+- level100.png
+- cross.png
+- long.png
+- risk2.png
+- blue.png

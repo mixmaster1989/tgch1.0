@@ -1,59 +1,87 @@
 import os
-import json
-from tkinter import messagebox
+import shutil
+import logging
+from PyQt5.QtWidgets import QMessageBox
 
-def save_project(blocks, filename):
-    """Сохранение проекта в JSON файл"""
+def create_example_images():
+    """Создает директорию с примерами изображений, если она не существует"""
+    examples_dir = "examples"
     try:
-        data = [block.get_data() for block in blocks]
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return True
+        if not os.path.exists(examples_dir):
+            os.makedirs(examples_dir)
+        
+        # Список изображений примеров
+        example_images = [
+            "ema14.png", "rsi14.png", "macd.png", "bb20.png", "stoch.png",
+            "atr14.png", "cci20.png", "volma20.png", "ma50.png", "level100.png",
+            "cross.png", "long.png", "risk2.png", "blue.png"
+        ]
+        
+        # Создаем заглушки для изображений, если они не существуют
+        for image in example_images:
+            image_path = os.path.join(examples_dir, image)
+            if not os.path.exists(image_path):
+                # Создаем пустой файл изображения
+                with open(image_path, 'w') as f:
+                    f.write("# Placeholder for example image")
     except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось сохранить проект: {str(e)}")
-        return False
-
-def load_project(filename):
-    """Загрузка проекта из JSON файла"""
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось загрузить проект: {str(e)}")
-        return None
+        logging.error(f"Ошибка при создании примеров изображений: {str(e)}")
 
 def validate_code(code):
-    """Проверка кода на ошибки"""
+    """Проверяет код на наличие ошибок"""
+    errors = []
+    
+    # Проверка на наличие основных компонентов
+    if "//@version=5" not in code:
+        errors.append("Отсутствует версия Pine Script (//@version=5)")
+    
+    # Проверка на дублирование объявления индикатора
+    indicator_count = code.count("indicator(")
+    if indicator_count == 0:
+        errors.append("Отсутствует объявление индикатора (indicator)")
+    elif indicator_count > 1:
+        errors.append("Множественное объявление индикатора. Должно быть только одно.")
+    
+    # Проверка на наличие ошибок в параметрах
+    for line in code.split("\n"):
+        if "=" in line and "ta." in line:
+            if "(" not in line or ")" not in line:
+                errors.append(f"Ошибка в параметрах: {line}")
+    
+    return errors
+
+def show_info_message(parent, title, message):
+    """Показывает информационное сообщение"""
     try:
-        # Здесь можно добавить более сложную валидацию
-        if not code.strip():
-            return False, "Код пустой"
-        return True, None
+        msg_box = QMessageBox(parent)
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.exec_()
     except Exception as e:
-        return False, str(e)
+        logging.error(f"Ошибка при отображении сообщения: {str(e)}")
 
-def format_code(code):
-    """Форматирование Python кода"""
+def backup_project(backup_dir="backups"):
+    """Создает резервную копию проекта"""
     try:
-        import autopep8
-        return autopep8.fix_code(code)
-    except:
-        return code
-
-def get_project_name(filename):
-    """Получение имени проекта из пути к файлу"""
-    return os.path.splitext(os.path.basename(filename))[0]
-
-def create_new_project():
-    """Создание нового проекта"""
-    return []
-
-def export_to_file(code, filename):
-    """Экспорт кода в файл"""
-    try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(code)
-        return True
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+        
+        # Получаем текущую дату и время для имени резервной копии
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"backup_{timestamp}"
+        backup_path = os.path.join(backup_dir, backup_name)
+        
+        # Создаем директорию для резервной копии
+        os.makedirs(backup_path)
+        
+        # Копируем все .py файлы
+        for file in os.listdir("."):
+            if file.endswith(".py"):
+                shutil.copy2(file, os.path.join(backup_path, file))
+        
+        return backup_path
     except Exception as e:
-        messagebox.showerror("Ошибка", f"Не удалось экспортировать код: {str(e)}")
-        return False 
+        logging.error(f"Ошибка при создании резервной копии: {str(e)}")
+        return None
