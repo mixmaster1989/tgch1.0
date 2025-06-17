@@ -48,6 +48,18 @@ def validate_code(code):
             if "(" not in line or ")" not in line:
                 errors.append(f"Ошибка в параметрах: {line}")
     
+    # Проверка баланса скобок
+    stack = []
+    for i, c in enumerate(code):
+        if c == '(': stack.append(i)
+        elif c == ')':
+            if not stack:
+                errors.append("Лишняя закрывающая скобка")
+                break
+            stack.pop()
+    if stack:
+        errors.append("Несоответствие скобок: не все скобки закрыты")
+    
     return errors
 
 def show_info_message(parent, title, message):

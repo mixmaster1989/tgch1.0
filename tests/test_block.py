@@ -10,14 +10,14 @@ from block import Block
 def test_block_init():
     """Тест инициализации блока"""
     block = Block("Тестовый блок")
-    assert block.type == "Тестовый блок"
+    assert block.block_type == "Тестовый блок"
     assert block.params == {}
 
 def test_block_init_with_params():
     """Тест инициализации блока с параметрами"""
     params = {"param1": "value1", "param2": 42}
     block = Block("Тестовый блок", params)
-    assert block.type == "Тестовый блок"
+    assert block.block_type == "Тестовый блок"
     assert block.params == params
 
 def test_block_get_data():
@@ -25,7 +25,7 @@ def test_block_get_data():
     params = {"param1": "value1", "param2": 42}
     block = Block("Тестовый блок", params)
     data = block.get_data()
-    assert data["type"] == "Тестовый блок"
+    assert data["block_type"] == "Тестовый блок"
     assert data["params"] == params
 
 def test_block_duplicate():
@@ -38,7 +38,7 @@ def test_block_duplicate():
     assert duplicate is not block
     
     # Проверяем, что данные скопированы
-    assert duplicate.type == block.type
+    assert duplicate.block_type == block.block_type
     assert duplicate.params == block.params
     
     # Проверяем, что это глубокая копия параметров

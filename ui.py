@@ -2,27 +2,45 @@
 Главный модуль пользовательского интерфейса
 """
 
+print('UI VERY TOP')
 import sys
+print('UI AFTER sys')
 import os
+print('UI AFTER os')
 import json
+print('UI AFTER json')
 import logging
+print('UI AFTER logging')
 import traceback
+print('UI AFTER traceback')
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QComboBox, QLineEdit, QTextEdit, QScrollArea,
                             QFrame, QMessageBox, QToolButton, QToolTip, QSizePolicy, QDialog, 
                             QDialogButtonBox, QWizard, QWizardPage, QFileDialog, QAction, QMenu,
                             QStatusBar)
+print('UI AFTER PyQt5.QtWidgets')
 from PyQt5.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QPoint, QTimer
+print('UI AFTER PyQt5.QtCore')
 from PyQt5.QtGui import QFont, QIcon, QColor, QPalette, QPixmap, QKeySequence
+print('UI AFTER PyQt5.QtGui')
 from block import Block
+print('UI AFTER block')
 from block_widget import BlockWidget
+print('UI AFTER block_widget')
 from code_gen import generate_code
+print('UI AFTER code_gen')
 from constants import BLOCK_TYPES
+print('UI AFTER constants')
 from utils import validate_code, show_info_message, backup_project
+print('UI AFTER utils')
 from error_handler import setup_error_handling, show_error_dialog
+print('UI AFTER error_handler')
 from dialogs import BlockSelectDialog, WizardDialog, ExampleDialog, HelpDialog, AboutDialog
+print('UI AFTER dialogs')
 from autosave import autosave
+print('UI AFTER autosave')
 from preview import PreviewDialog
+print('UI AFTER preview')
 
 # Настройка обработки ошибок
 setup_error_handling()
@@ -100,13 +118,6 @@ class MainWindow(QMainWindow):
         
         # Кнопки управления
         buttons_layout = QHBoxLayout()
-        
-        # Кнопка добавления блока
-        add_block_btn = QPushButton("➕ Добавить блок")
-        add_block_btn.setFont(QFont("Arial", 12))
-        add_block_btn.setProperty("primary", True)
-        add_block_btn.clicked.connect(self.add_block)
-        buttons_layout.addWidget(add_block_btn)
         
         # Кнопка пошагового мастера
         wizard_btn = QPushButton("🧙 Пошаговый мастер")
@@ -260,35 +271,31 @@ class MainWindow(QMainWindow):
     
     def remove_block(self, block_widget):
         """Удаляет блок"""
-        index = self.blocks_widget.layout().indexOf(block_widget)
-        if index != -1:
-            block_type = self.blocks[index].type
+        index = self.blocks_layout.indexOf(block_widget)
+        if index >= 0:
+            block_type = self.blocks[index].block_type
             self.blocks.pop(index)
+            block_widget.setParent(None)
             self.update_blocks()
             self.statusBar.showMessage(f"Удален блок: {block_type}")
     
     def duplicate_block(self, block_widget):
         """Дублирует блок"""
-        index = self.blocks_widget.layout().indexOf(block_widget)
-        if index != -1:
-            # Создаем копию блока
+        index = self.blocks_layout.indexOf(block_widget)
+        if index >= 0:
             original_block = self.blocks[index]
             new_block = original_block.duplicate()
-            # Добавляем новый блок после текущего
             self.blocks.insert(index + 1, new_block)
             self.update_blocks()
-            self.statusBar.showMessage(f"Дублирован блок: {original_block.type}")
+            self.statusBar.showMessage(f"Дублирован блок: {original_block.block_type}")
     
     def move_block(self, source_index, target_index):
         """Перемещает блок с одной позиции на другую"""
         if 0 <= source_index < len(self.blocks) and 0 <= target_index < len(self.blocks):
-            # Извлекаем блок из исходной позиции
             block = self.blocks.pop(source_index)
-            # Вставляем блок в целевую позицию
             self.blocks.insert(target_index, block)
-            # Обновляем отображение
             self.update_blocks()
-            self.statusBar.showMessage(f"Перемещен блок: {block.type}")
+            self.statusBar.showMessage(f"Перемещен блок: {block.block_type}")
     
     def update_blocks(self):
         """Обновляет отображение блоков"""
@@ -378,14 +385,10 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getSaveFileName(self, "Экспорт настроек", "", "JSON Files (*.json)")
         if file_name:
             try:
-                settings = []
-                for block in self.blocks:
-                    settings.append(block.get_data())
-                
                 with open(file_name, 'w', encoding='utf-8') as f:
-                    json.dump(settings, f, indent=4, ensure_ascii=False)
+                    json.dump([b.get_data() for b in self.blocks], f, indent=4, ensure_ascii=False)
                 
-                self.statusBar.showMessage(f"Настройки экспортированы в {file_name}")
+                self.statusBar.showMessage(f"Сохранено {len(self.blocks)} блоков")
                 show_info_message(self, "Экспорт", f"Настройки успешно экспортированы в {file_name}.")
             except Exception as e:
                 logging.error(f"Ошибка при экспорте настроек: {str(e)}")
@@ -401,12 +404,12 @@ class MainWindow(QMainWindow):
                 
                 self.blocks = []
                 for s in settings:
-                    if "type" in s and "params" in s:
-                        block = Block(s["type"], s["params"])
+                    if "block_type" in s and "params" in s:
+                        block = Block(s["block_type"], s["params"])
                         self.blocks.append(block)
                 
                 self.update_blocks()
-                self.statusBar.showMessage(f"Настройки импортированы из {file_name}")
+                self.statusBar.showMessage(f"Импортировано {len(self.blocks)} блоков")
                 show_info_message(self, "Импорт", f"Настройки успешно импортированы из {file_name}.")
             except Exception as e:
                 logging.error(f"Ошибка при импорте настроек: {str(e)}")

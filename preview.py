@@ -66,7 +66,7 @@ class PreviewWidget(QWidget):
     def add_indicator(self, indicator_type, params=None):
         """Добавляет индикатор для отображения"""
         self.indicators.append({
-            "type": indicator_type,
+            "block_type": indicator_type,
             "params": params or {}
         })
         self.update()
@@ -109,10 +109,10 @@ class PreviewWidget(QWidget):
         painter.setPen(QPen(QColor("#333333"), 1, Qt.DashLine))
         for i in range(5):
             y = padding + i * chart_height / 4
-            painter.drawLine(padding, y, width - padding, y)
+            painter.drawLine(int(padding), int(y), int(width - padding), int(y))
             price = max_price - i * price_range / 4
             painter.setPen(QPen(QColor("#666666"), 1))
-            painter.drawText(5, y + 5, f"{price:.2f}")
+            painter.drawText(5, int(y + 5), f"{price:.2f}")
             painter.setPen(QPen(QColor("#333333"), 1, Qt.DashLine))
         
         # Рисуем свечи
@@ -136,23 +136,23 @@ class PreviewWidget(QWidget):
             painter.setPen(QPen(candle_color, 1))
             painter.setBrush(QBrush(candle_color))
             body_width = max(1, candle_width * 0.8)
-            painter.drawRect(x + (candle_width - body_width) / 2, min(open_y, close_y), 
-                           body_width, abs(close_y - open_y) or 1)
+            painter.drawRect(int(x + (candle_width - body_width) / 2), int(min(open_y, close_y)), 
+                           int(body_width), int(abs(close_y - open_y) or 1))
             
             # Рисуем тени
             center_x = x + candle_width / 2
-            painter.drawLine(center_x, high_y, center_x, min(open_y, close_y))
-            painter.drawLine(center_x, max(open_y, close_y), center_x, low_y)
+            painter.drawLine(int(center_x), int(high_y), int(center_x), int(min(open_y, close_y)))
+            painter.drawLine(int(center_x), int(max(open_y, close_y)), int(center_x), int(low_y))
         
         # Рисуем индикаторы
         for indicator in self.indicators:
-            if indicator["type"] == "Скользящая средняя":
+            if indicator["block_type"] == "Скользящая средняя":
                 self._draw_ma(painter, indicator["params"], padding, chart_width, chart_height, min_price, price_range)
-            elif indicator["type"] == "RSI":
+            elif indicator["block_type"] == "RSI":
                 self._draw_rsi(painter, indicator["params"], padding, chart_width, chart_height)
-            elif indicator["type"] == "MACD":
+            elif indicator["block_type"] == "MACD":
                 self._draw_macd(painter, indicator["params"], padding, chart_width, chart_height)
-            elif indicator["type"] == "Bollinger Bands":
+            elif indicator["block_type"] == "Bollinger Bands":
                 self._draw_bollinger(painter, indicator["params"], padding, chart_width, chart_height, min_price, price_range)
     
     def _draw_ma(self, painter, params, padding, chart_width, chart_height, min_price, price_range):
@@ -188,7 +188,7 @@ class PreviewWidget(QWidget):
             if not path_points:
                 path_points.append((x, y))
             else:
-                painter.drawLine(path_points[-1][0], path_points[-1][1], x, y)
+                painter.drawLine(int(path_points[-1][0]), int(path_points[-1][1]), int(x), int(y))
                 path_points.append((x, y))
     
     def _draw_rsi(self, painter, params, padding, chart_width, chart_height):
@@ -201,12 +201,12 @@ class PreviewWidget(QWidget):
         rsi_top = padding + chart_height - rsi_height
         
         # Рисуем фон
-        painter.fillRect(padding, rsi_top, chart_width, rsi_height, QColor("#2b2b2b"))
+        painter.fillRect(int(padding), int(rsi_top), int(chart_width), int(rsi_height), QColor("#2b2b2b"))
         
         # Рисуем уровни
         painter.setPen(QPen(QColor("#666666"), 1, Qt.DashLine))
-        painter.drawLine(padding, rsi_top + rsi_height * 0.3, padding + chart_width, rsi_top + rsi_height * 0.3)  # Уровень 70
-        painter.drawLine(padding, rsi_top + rsi_height * 0.7, padding + chart_width, rsi_top + rsi_height * 0.7)  # Уровень 30
+        painter.drawLine(int(padding), int(rsi_top + rsi_height * 0.3), int(padding + chart_width), int(rsi_top + rsi_height * 0.3))  # Уровень 70
+        painter.drawLine(int(padding), int(rsi_top + rsi_height * 0.7), int(padding + chart_width), int(rsi_top + rsi_height * 0.7))  # Уровень 30
         
         # Рисуем линию RSI
         painter.setPen(QPen(QColor("#9C27B0"), 2))
@@ -215,7 +215,7 @@ class PreviewWidget(QWidget):
         for i in range(1, 100):
             x = padding + i * chart_width / 100
             y = rsi_top + rsi_height / 2 + math.sin(i / 10) * rsi_height / 4
-            painter.drawLine(prev_x, prev_y, x, y)
+            painter.drawLine(int(prev_x), int(prev_y), int(x), int(y))
             prev_x = x
             prev_y = y
     
@@ -228,11 +228,11 @@ class PreviewWidget(QWidget):
         macd_top = padding + chart_height - macd_height
         
         # Рисуем фон
-        painter.fillRect(padding, macd_top, chart_width, macd_height, QColor("#2b2b2b"))
+        painter.fillRect(int(padding), int(macd_top), int(chart_width), int(macd_height), QColor("#2b2b2b"))
         
         # Рисуем нулевую линию
         painter.setPen(QPen(QColor("#666666"), 1, Qt.DashLine))
-        painter.drawLine(padding, macd_top + macd_height / 2, padding + chart_width, macd_top + macd_height / 2)
+        painter.drawLine(int(padding), int(macd_top + macd_height / 2), int(padding + chart_width), int(macd_top + macd_height / 2))
         
         # Рисуем линию MACD
         painter.setPen(QPen(QColor("#2196F3"), 2))
@@ -241,7 +241,7 @@ class PreviewWidget(QWidget):
         for i in range(1, 100):
             x = padding + i * chart_width / 100
             y = macd_top + macd_height / 2 + math.sin(i / 15) * macd_height / 4
-            painter.drawLine(prev_x, prev_y, x, y)
+            painter.drawLine(int(prev_x), int(prev_y), int(x), int(y))
             prev_x = x
             prev_y = y
         
@@ -252,7 +252,7 @@ class PreviewWidget(QWidget):
         for i in range(1, 100):
             x = padding + i * chart_width / 100
             y = macd_top + macd_height / 2 + math.sin(i / 15 + 1) * macd_height / 4
-            painter.drawLine(prev_x, prev_y, x, y)
+            painter.drawLine(int(prev_x), int(prev_y), int(x), int(y))
             prev_x = x
             prev_y = y
         
@@ -265,7 +265,7 @@ class PreviewWidget(QWidget):
                 painter.setBrush(QBrush(QColor("#4CAF50")))
             else:
                 painter.setBrush(QBrush(QColor("#F44336")))
-            painter.drawRect(x, macd_top + macd_height / 2, chart_width / 100, height)
+            painter.drawRect(int(x), int(macd_top + macd_height / 2), int(chart_width / 100), int(height))
     
     def _draw_bollinger(self, painter, params, padding, chart_width, chart_height, min_price, price_range):
         """Рисует полосы Боллинджера"""
@@ -305,7 +305,7 @@ class PreviewWidget(QWidget):
             if not path_points:
                 path_points.append((x, y))
             else:
-                painter.drawLine(path_points[-1][0], path_points[-1][1], x, y)
+                painter.drawLine(int(path_points[-1][0]), int(path_points[-1][1]), int(x), int(y))
                 path_points.append((x, y))
         
         # Рисуем верхнюю линию
@@ -321,7 +321,7 @@ class PreviewWidget(QWidget):
             if not path_points:
                 path_points.append((x, y))
             else:
-                painter.drawLine(path_points[-1][0], path_points[-1][1], x, y)
+                painter.drawLine(int(path_points[-1][0]), int(path_points[-1][1]), int(x), int(y))
                 path_points.append((x, y))
         
         # Рисуем нижнюю линию
@@ -337,7 +337,7 @@ class PreviewWidget(QWidget):
             if not path_points:
                 path_points.append((x, y))
             else:
-                painter.drawLine(path_points[-1][0], path_points[-1][1], x, y)
+                painter.drawLine(int(path_points[-1][0]), int(path_points[-1][1]), int(x), int(y))
                 path_points.append((x, y))
 
 class PreviewDialog(QDialog):
@@ -365,8 +365,8 @@ class PreviewDialog(QDialog):
         
         # Добавляем индикаторы
         for block in self.blocks:
-            if block.type in ["Скользящая средняя", "RSI", "MACD", "Bollinger Bands"]:
-                self.preview.add_indicator(block.type, block.params)
+            if block.block_type in ["Скользящая средняя", "RSI", "MACD", "Bollinger Bands"]:
+                self.preview.add_indicator(block.block_type, block.params)
         
         # Кнопки управления
         buttons_layout = QHBoxLayout()

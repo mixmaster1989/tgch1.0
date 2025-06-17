@@ -66,11 +66,11 @@ class BlockWidget(QFrame):
         
         # Заголовок блока
         header = QHBoxLayout()
-        icon_label = QLabel(BLOCK_TYPES[self.block.type]["icon"])
+        icon_label = QLabel(BLOCK_TYPES[self.block.block_type]["icon"])
         icon_label.setFont(QFont("Arial", 16))
-        title_label = QLabel(self.block.type)
+        title_label = QLabel(self.block.block_type)
         title_label.setFont(QFont("Arial", 14, QFont.Bold))
-        description_label = QLabel(BLOCK_TYPES[self.block.type]["description"])
+        description_label = QLabel(BLOCK_TYPES[self.block.block_type]["description"])
         description_label.setWordWrap(True)
         description_label.setStyleSheet("color: #aaaaaa; font-size: 12px;")
         
@@ -96,7 +96,7 @@ class BlockWidget(QFrame):
         layout.addWidget(description_label)
         
         # Параметры блока
-        for param in BLOCK_TYPES[self.block.type]["params"]:
+        for param in BLOCK_TYPES[self.block.block_type]["params"]:
             param_layout = QVBoxLayout()
             row = QHBoxLayout()
             

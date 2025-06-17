@@ -107,8 +107,8 @@ class AutoSave:
             # Создаем блоки
             blocks = []
             for s in settings:
-                if "type" in s and "params" in s:
-                    block = block_class(s["type"], s["params"])
+                if "block_type" in s and "params" in s:
+                    block = block_class(s["block_type"], s["params"])
                     blocks.append(block)
             
             logging.info(f"Загружено {len(blocks)} блоков из автосохранения: {self.autosave_file}")

@@ -59,8 +59,7 @@ class Logger:
         root_logger = logging.getLogger()
         root_logger.addHandler(console_handler)
         
-        # Устанавливаем глобальный обработчик исключений
-        sys.excepthook = self.exception_handler
+        # Не устанавливаем sys.excepthook здесь, чтобы избежать конфликта с error_handler.py
     
     def exception_handler(self, exc_type, exc_value, exc_tb):
         """Глобальный обработчик исключений"""

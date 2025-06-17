@@ -1,13 +1,13 @@
 class Block:
-    def __init__(self, type, params=None):
+    def __init__(self, block_type, params=None):
         """
         Инициализация блока
         
         Args:
-            type (str): Тип блока
+            block_type (str): Тип блока
             params (dict, optional): Параметры блока. По умолчанию None.
         """
-        self.type = type
+        self.block_type = block_type
         self.params = params or {}
     
     def get_data(self):
@@ -18,7 +18,7 @@ class Block:
             dict: Данные блока
         """
         return {
-            "type": self.type,
+            "block_type": self.block_type,
             "params": self.params
         }
     
@@ -39,4 +39,4 @@ class Block:
         Returns:
             Block: Новый блок с теми же параметрами
         """
-        return Block(self.type, self.params.copy())
+        return Block(self.block_type, self.params.copy())
