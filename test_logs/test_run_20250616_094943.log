@@ -1,3 +1,0 @@
-2025-06-16 09:49:43,026 - INFO - Starting test suite execution
-2025-06-16 09:49:43,027 - INFO - Installing dependencies...
-2025-06-16 09:49:46,772 - ERROR - Failed to install dependencies: Command '['C:\\Users\\master\\AppData\\Local\\Programs\\Python\\Python313\\python.exe', '-m', 'pip', 'install', '-r', 'requirements.txt']' returned non-zero exit status 1.
