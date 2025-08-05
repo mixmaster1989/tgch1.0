@@ -1,0 +1,33 @@
+# Environment files
+.env
+.env.local
+.env.production
+
+# Log files
+*.log
+bot.log
+trader.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Build files
+build/
+dist/
+*.spec
+*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
