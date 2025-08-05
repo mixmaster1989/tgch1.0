@@ -27,6 +27,6 @@ STOP_LOSS_PERCENT = 2.0
 TAKE_PROFIT_PERCENT = 5.0
 
 # Neural Network Configuration
-GOLDEN_MODEL = 'anthropic/claude-3-sonnet'  # Для торговых решений
+GOLDEN_MODEL = 'deepseek/deepseek-r1-0528:free'  # Бесплатная модель для торговых решений
 SILVER_MODEL = 'deepseek/deepseek-r1-0528:free'  # Бесплатная модель для чата
 ANALYSIS_INTERVAL = 300  # seconds

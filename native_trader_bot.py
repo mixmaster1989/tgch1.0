@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from openrouter_manager import OpenRouterManager
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# from trading_engine import TradingEngine
 
 class NativeTraderBot:
     def __init__(self):
@@ -14,12 +15,14 @@ class NativeTraderBot:
         self.target_chat_id = int(TELEGRAM_CHAT_ID)
         self.message_history = []  # История сообщений
         self.bot_username = "ingenerikarbot"
+        # self.trading_engine = TradingEngine(simulation_mode=True)  # Торговый движок
         
         # Ключевые слова для реакции
         self.trigger_words = [
             'бот', 'трейдер', 'торговля', 'мекс', 'mex', 'ошибка', 'помощь', 
             'анализ', 'цена', 'баланс', 'купить', 'продать', 'api', 'ключ',
-            'лимит', 'openrouter', 'deepseek', 'нейронка', 'ии', 'ai'
+            'лимит', 'openrouter', 'deepseek', 'нейронка', 'ии', 'ai',
+            'рынок', 'симуляция', 'процессор', 'запуск'
         ]
         
         # Уровни мата
@@ -136,6 +139,10 @@ class NativeTraderBot:
         # Логируем сообщение
         self.log_message(message_text, user_name, timestamp)
         
+        # Проверяем торговые команды
+        if await self.handle_trading_commands(message_text, update, context):
+            return
+        
         # Проверяем, нужно ли отвечать
         should_respond, trigger_type = self.should_respond(message_text)
         
@@ -172,6 +179,98 @@ class NativeTraderBot:
             # Обработка ошибок в характере
             error_msg = f"Капец, что-то пошло не так: {str(e)[:50]}... {self.get_swear_word().capitalize()}!"
             await update.message.reply_text(error_msg)
+    
+    async def handle_trading_commands(self, message_text: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+        """Обработка торговых команд"""
+        message_lower = message_text.lower()
+        
+        if 'симуляция' in message_lower:
+            await self.run_simulation(update, context)
+            return True
+        
+        return False
+    
+    async def run_simulation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Торговая симуляция"""
+        from market_analyzer import MarketAnalyzer
+        
+        try:
+            await update.message.reply_text("🔍 Запуск анализа рынка...")
+            
+            market_analyzer = MarketAnalyzer()
+            
+            # Получаем рыночные данные
+            market_data = market_analyzer.get_market_data()
+            await update.message.reply_text(f"📊 Получено {len(market_data)} торговых пар")
+            
+            if len(market_data) == 0:
+                await update.message.reply_text("❌ Нет данных рынка")
+                return
+            
+            # Фильтруем кандидатов
+            await update.message.reply_text("🔍 Фильтрация кандидатов...")
+            candidates = market_analyzer.filter_trading_candidates(market_data[:50])
+            
+            if len(candidates) == 0:
+                await update.message.reply_text("❌ Нет подходящих кандидатов")
+                return
+            
+            await update.message.reply_text(f"✅ Найдено {len(candidates)} кандидатов")
+            
+            # Анализируем топ-3
+            recommendations = []
+            for i, candidate in enumerate(candidates[:3]):
+                await update.message.reply_text(f"🤖 Анализ {candidate['symbol']} ({i+1}/3)...")
+                
+                ai_analysis = market_analyzer.analyze_with_ai(candidate)
+                quantity = market_analyzer.calculate_position_size(
+                    candidate['symbol'], candidate['current_price'], candidate['score']
+                )
+                
+                recommendation = {
+                    'symbol': candidate['symbol'],
+                    'action': ai_analysis['recommendation'],
+                    'confidence': ai_analysis['confidence'],
+                    'quantity': quantity,
+                    'price': candidate['current_price'],
+                    'score': candidate['score'],
+                    'reasons': candidate['reasons'],
+                    'ai_analysis': ai_analysis['analysis'],
+                    'position_size_usdt': quantity * candidate['current_price']
+                }
+                recommendations.append(recommendation)
+            
+            # Выводим результаты
+            await update.message.reply_text("🏆 РЕЗУЛЬТАТЫ АНАЛИЗА:")
+            
+            for i, rec in enumerate(recommendations, 1):
+                action_emoji = "🟢" if rec['action'] == 'BUY' else "🔴" if rec['action'] == 'SELL' else "🟡"
+                
+                message = f"{action_emoji} {i}. {rec['symbol']}\n"
+                message += f"⚙️ Действие: {rec['action']}\n"
+                message += f"🎯 Уверенность: {rec['confidence']:.1%}\n"
+                message += f"💰 Цена: ${rec['price']:.6f}\n"
+                message += f"📈 Количество: {rec['quantity']}\n"
+                message += f"💵 Размер: ${rec['position_size_usdt']:.2f}\n"
+                message += f"⭐ Скор: {rec['score']}\n"
+                message += f"📄 Причины: {', '.join(rec['reasons'])}\n\n"
+                message += f"🤖 Анализ: {rec['ai_analysis']}"
+                
+                await update.message.reply_text(message)
+            
+            # Итого
+            total_usdt = sum(rec['position_size_usdt'] for rec in recommendations)
+            buy_count = sum(1 for rec in recommendations if rec['action'] == 'BUY')
+            
+            summary = f"📊 ИТОГО:\n"
+            summary += f"📋 Проанализировано: {len(recommendations)} монет\n"
+            summary += f"🟢 К покупке: {buy_count}\n"
+            summary += f"💰 Общий объем: ${total_usdt:.2f}"
+            
+            await update.message.reply_text(summary)
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка симуляции: {str(e)}")
     
     def run(self):
         """Запуск бота"""

@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from mex_api import MexAPI
 from neural_analyzer import NeuralAnalyzer
+from market_analyzer import MarketAnalyzer
 from config import TELEGRAM_BOT_TOKEN, DEFAULT_TRADE_AMOUNT
 import json
 
@@ -10,6 +11,7 @@ class TradingBot:
     def __init__(self):
         self.mex_api = MexAPI()
         self.analyzer = NeuralAnalyzer()
+        self.market_analyzer = MarketAnalyzer()
         self.app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         self.setup_handlers()
     
@@ -20,6 +22,7 @@ class TradingBot:
         self.app.add_handler(CommandHandler("price", self.get_price))
         self.app.add_handler(CommandHandler("analyze", self.analyze_symbol))
         self.app.add_handler(CommandHandler("orders", self.get_orders))
+        self.app.add_handler(CommandHandler("симуляция", self.run_simulation))
         self.app.add_handler(CallbackQueryHandler(self.button_handler))
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -28,7 +31,7 @@ class TradingBot:
             [InlineKeyboardButton("💰 Баланс", callback_data="balance")],
             [InlineKeyboardButton("📊 Анализ", callback_data="analyze_menu")],
             [InlineKeyboardButton("📋 Ордера", callback_data="orders")],
-            [InlineKeyboardButton("💹 Торговля", callback_data="trade_menu")]
+            [InlineKeyboardButton("🎯 Симуляция", callback_data="simulation")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -38,7 +41,8 @@ class TradingBot:
             "/balance - баланс аккаунта\n"
             "/price SYMBOL - цена символа\n"
             "/analyze SYMBOL - анализ символа\n"
-            "/orders - открытые ордера",
+            "/orders - открытые ордера\n"
+            "/симуляция - полный анализ рынка",
             reply_markup=reply_markup
         )
     
@@ -154,9 +158,95 @@ class TradingBot:
             await self.get_balance(update, context)
         elif data == "orders":
             await self.get_orders(update, context)
+        elif data == "simulation":
+            await self.run_simulation(update, context)
         elif data.startswith("buy_") or data.startswith("sell_"):
             action, symbol = data.split("_", 1)
             await query.edit_message_text(f"⚠️ Торговые операции будут добавлены в следующей версии\n{action.upper()} {symbol}")
+    
+    async def run_simulation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Полная симуляция торгового анализа"""
+        try:
+            await update.message.reply_text("🔍 Запуск анализа рынка...")
+            
+            # Получаем рыночные данные
+            market_data = self.market_analyzer.get_market_data()
+            await update.message.reply_text(f"📊 Получено {len(market_data)} торговых пар")
+            
+            if len(market_data) == 0:
+                await update.message.reply_text("❌ Не удалось получить данные рынка")
+                return
+            
+            # Фильтруем кандидатов
+            await update.message.reply_text("🔍 Фильтрация кандидатов...")
+            candidates = self.market_analyzer.filter_trading_candidates(market_data[:50])  # Ограничиваем для скорости
+            
+            if len(candidates) == 0:
+                await update.message.reply_text("❌ Не найдено подходящих кандидатов")
+                return
+            
+            await update.message.reply_text(f"✅ Найдено {len(candidates)} кандидатов")
+            
+            # Анализируем топ-3
+            recommendations = []
+            for i, candidate in enumerate(candidates[:3]):
+                await update.message.reply_text(f"🤖 Анализ {candidate['symbol']} ({i+1}/3)...")
+                
+                # ИИ анализ
+                ai_analysis = self.market_analyzer.analyze_with_ai(candidate)
+                
+                # Размер позиции
+                quantity = self.market_analyzer.calculate_position_size(
+                    candidate['symbol'], 
+                    candidate['current_price'], 
+                    candidate['score']
+                )
+                
+                recommendation = {
+                    'symbol': candidate['symbol'],
+                    'action': ai_analysis['recommendation'],
+                    'confidence': ai_analysis['confidence'],
+                    'quantity': quantity,
+                    'price': candidate['current_price'],
+                    'score': candidate['score'],
+                    'reasons': candidate['reasons'],
+                    'ai_analysis': ai_analysis['analysis'],
+                    'position_size_usdt': quantity * candidate['current_price']
+                }
+                
+                recommendations.append(recommendation)
+            
+            # Вывод результатов
+            await update.message.reply_text("🏆 РЕЗУЛЬТАТЫ АНАЛИЗА:")
+            
+            for i, rec in enumerate(recommendations, 1):
+                action_emoji = "🟢" if rec['action'] == 'BUY' else "🔴" if rec['action'] == 'SELL' else "🟡"
+                
+                message = f"{action_emoji} {i}. {rec['symbol']}\n"
+                message += f"⚙️ Действие: {rec['action']}\n"
+                message += f"🎯 Уверенность: {rec['confidence']:.1%}\n"
+                message += f"💰 Цена: ${rec['price']:.6f}\n"
+                message += f"📈 Количество: {rec['quantity']}\n"
+                message += f"💵 Размер: ${rec['position_size_usdt']:.2f}\n"
+                message += f"⭐ Скор: {rec['score']}\n"
+                message += f"📄 Причины: {', '.join(rec['reasons'])}\n\n"
+                message += f"🤖 Анализ: {rec['ai_analysis'][:200]}..."
+                
+                await update.message.reply_text(message)
+            
+            # Итоговая статистика
+            total_usdt = sum(rec['position_size_usdt'] for rec in recommendations)
+            buy_count = sum(1 for rec in recommendations if rec['action'] == 'BUY')
+            
+            summary = f"📊 ИТОГО:\n"
+            summary += f"📋 Проанализировано: {len(recommendations)} монет\n"
+            summary += f"🟢 К покупке: {buy_count}\n"
+            summary += f"💰 Общий объем: ${total_usdt:.2f}"
+            
+            await update.message.reply_text(summary)
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка симуляции: {str(e)}")
     
     def run(self):
         """Запуск бота"""

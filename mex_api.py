@@ -104,3 +104,28 @@ class MexAPI:
         
         response = requests.delete(url, data=data, headers=self._get_headers(True))
         return response.json()
+    
+    def get_24hr_ticker(self, symbol=None):
+        """Получить 24ч статистику"""
+        url = f"{self.base_url}/api/v3/ticker/24hr"
+        params = {'symbol': symbol} if symbol else {}
+        response = requests.get(url, params=params)
+        return response.json()
+    
+    def get_symbol_ticker(self, symbol):
+        """Получить тикер символа"""
+        return self.get_ticker_price(symbol)
+    
+    def create_order(self, symbol, side, type, quantity, price=None):
+        """Создать ордер"""
+        return self.place_order(symbol, side, quantity, price)
+    
+    def get_depth(self, symbol, limit=100):
+        """Получить стакан заявок"""
+        url = f"{self.base_url}/api/v3/depth"
+        params = {
+            'symbol': symbol,
+            'limit': limit
+        }
+        response = requests.get(url, params=params)
+        return response.json()
