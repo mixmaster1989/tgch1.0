@@ -1,8 +1,0 @@
-# Пример .env для автотрейдера Bitget
-BITGET_API_KEY=your_bitget_api_key
-BITGET_API_SECRET=your_bitget_api_secret
-BITGET_API_PASSPHRASE=your_bitget_api_passphrase
-TELEGRAM_TOKEN=your_telegram_bot_token
-TELEGRAM_GROUP_ID=your_telegram_group_id
-WEBHOOK_PORT=8080
-DB_PATH=profiles.db
