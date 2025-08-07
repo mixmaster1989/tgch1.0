@@ -8,6 +8,9 @@
 bot.log
 trader.log
 
+# Analysis files
+full_ai_analysis_*.txt
+
 # Python cache
 __pycache__/
 *.pyc

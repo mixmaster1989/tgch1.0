@@ -89,10 +89,20 @@ class AdvancedCorrelationAnalyzer:
     def add_price_data(self, symbol: str, price: float, timestamp: int):
         """Добавление новой цены"""
         try:
-            self.price_data[symbol].append({
-                'price': float(price),
-                'timestamp': int(timestamp)
-            })
+            # Проверяем, нет ли уже такого timestamp
+            existing_timestamps = {d['timestamp'] for d in self.price_data[symbol]}
+            if timestamp in existing_timestamps:
+                # Обновляем существующую запись
+                for data_point in self.price_data[symbol]:
+                    if data_point['timestamp'] == timestamp:
+                        data_point['price'] = float(price)
+                        break
+            else:
+                # Добавляем новую запись
+                self.price_data[symbol].append({
+                    'price': float(price),
+                    'timestamp': int(timestamp)
+                })
             
             # Ограничиваем количество записей
             max_records = self.lookback_period * 24 * 60  # По минутам
@@ -612,6 +622,13 @@ class AdvancedCorrelationAnalyzer:
             
             df = pd.DataFrame(data)
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            # Удаляем дублирующиеся timestamps
+            df = df.drop_duplicates(subset=['timestamp'])
+            
+            # Сортируем по времени
+            df = df.sort_values('timestamp')
+            
             df.set_index('timestamp', inplace=True)
             
             # Используем минутные данные напрямую для корреляций
@@ -625,6 +642,10 @@ class AdvancedCorrelationAnalyzer:
     def _calculate_pearson_correlation(self, series1: pd.Series, series2: pd.Series) -> float:
         """Расчет корреляции Пирсона"""
         try:
+            # Удаляем дублирующиеся индексы перед объединением
+            series1 = series1[~series1.index.duplicated(keep='first')]
+            series2 = series2[~series2.index.duplicated(keep='first')]
+            
             combined = pd.concat([series1, series2], axis=1).dropna()
             
             if len(combined) < 5:

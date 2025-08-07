@@ -217,6 +217,7 @@ class ComprehensiveDataManager:
     def __init__(self):
         # Инициализация компонентов
         self.rest_api = MexAPI()
+        self.mex_api = self.rest_api  # Алиас для совместимости
         self.websocket_client = MEXCWebSocketClient()
         self.perplexity = PerplexityAnalyzer()
         self.technical_indicators = TechnicalIndicators()
@@ -272,7 +273,7 @@ class ComprehensiveDataManager:
                 asyncio.create_task(self._klines_data_loop()),
                 asyncio.create_task(self._account_data_loop()),
                 asyncio.create_task(self._news_data_loop()),
-                asyncio.create_task(self._correlation_data_loop())  # КРИТИЧНО: Цикл корреляций
+                # asyncio.create_task(self._correlation_data_loop())  # ВРЕМЕННО ОТКЛЮЧЕНО: Цикл корреляций
             ]
             
             print("✅ Комплексный менеджер данных запущен")
@@ -474,7 +475,7 @@ class ComprehensiveDataManager:
                 
                 for symbol in symbols:
                     # Получаем новости через Perplexity
-                    news_data = await self.perplexity.collect_coin_data(symbol)
+                    news_data = await self.perplexity.get_comprehensive_analysis(symbol)
                     
                     if news_data:
                         # Создаем NewsData
@@ -560,6 +561,26 @@ class ComprehensiveDataManager:
     def get_market_data(self, symbol: str = None) -> Dict:
         """Получение рыночных данных"""
         if symbol:
+            # Если данных нет в кэше, получаем через REST API
+            if symbol not in self.market_cache or not self.market_cache[symbol]:
+                try:
+                    ticker_data = self.rest_api.get_24hr_ticker(symbol)
+                    if ticker_data and isinstance(ticker_data, dict):
+                        market_data = MarketData(
+                            symbol=symbol,
+                            price=float(ticker_data.get('lastPrice', 0)),
+                            change_24h=float(ticker_data.get('priceChangePercent', 0)),
+                            volume_24h=float(ticker_data.get('volume', 0)),
+                            quote_volume_24h=float(ticker_data.get('quoteVolume', 0)),
+                            high_24h=float(ticker_data.get('highPrice', 0)),
+                            low_24h=float(ticker_data.get('lowPrice', 0)),
+                            timestamp=datetime.now(),
+                            source=DataSource.REST_API
+                        )
+                        self.market_cache[symbol] = market_data
+                        return market_data
+                except Exception as e:
+                    print(f"Ошибка получения рыночных данных для {symbol}: {e}")
             return self.market_cache.get(symbol)
         return self.market_cache
     
@@ -602,7 +623,33 @@ class ComprehensiveDataManager:
         multitimeframe = self.get_multitimeframe_data(symbol)
         if multitimeframe:
             return multitimeframe.indicators.get(interval)
-        return None
+        
+        # Если нет данных в кэше, запускаем РЕАЛЬНЫЕ расчеты
+        try:
+            # Запускаем асинхронный расчет индикаторов
+            import asyncio
+            
+            # Создаем новый event loop для этого вызова
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                new_loop.run_until_complete(self._calculate_technical_indicators(symbol, interval))
+                new_loop.close()
+            except Exception as loop_error:
+                print(f"Ошибка event loop для {symbol}: {loop_error}")
+                # Fallback: пробуем синхронный вызов
+                pass
+            
+            # Теперь пробуем получить из кэша
+            multitimeframe = self.get_multitimeframe_data(symbol)
+            if multitimeframe:
+                return multitimeframe.indicators.get(interval)
+            
+            return None
+            
+        except Exception as e:
+            print(f"Ошибка расчета технических индикаторов для {symbol}: {e}")
+            return None
     
     def get_correlation_data(self, symbol: str) -> Dict:
         """Получение корреляционных данных"""
@@ -669,9 +716,72 @@ class ComprehensiveDataManager:
             print(f"Ошибка обработки сделки для {symbol}: {e}")
             return None
     
-    def get_orderbook_data(self, symbol: str) -> Optional[OrderBookData]:
-        """Получение данных ордербука"""
-        return self.orderbook_cache.get(symbol)
+    async def get_orderbook_data(self, symbol: str) -> Optional[OrderBookData]:
+        """Получение данных ордербука с fallback на REST API"""
+        # Сначала пробуем из кэша
+        orderbook = self.orderbook_cache.get(symbol)
+        if orderbook:
+            return orderbook
+        
+        # Если нет в кэше, пробуем получить через REST API
+        try:
+            print(f"🔄 Orderbook для {symbol} не найден в кэше, запрашиваем REST API...")
+            import asyncio
+            
+            # Создаем новую задачу для асинхронного запроса
+            async def fetch_orderbook():
+                try:
+                    # Получаем orderbook через REST API
+                    depth_data = self.mex_api.get_depth(symbol, limit=10)
+                    if depth_data and 'bids' in depth_data and 'asks' in depth_data:
+                        bids = depth_data['bids'][:10]  # Берем топ 10
+                        asks = depth_data['asks'][:10]
+                        
+                        if bids and asks:
+                            best_bid = float(bids[0][0])
+                            best_ask = float(asks[0][0])
+                            
+                            orderbook_data = OrderBookData(
+                                symbol=symbol,
+                                bids=[[float(price), float(qty)] for price, qty in bids],
+                                asks=[[float(price), float(qty)] for price, qty in asks],
+                                spread=best_ask - best_bid,
+                                spread_percent=((best_ask - best_bid) / best_bid) * 100,
+                                bid_volume=sum(float(qty) for _, qty in bids),
+                                ask_volume=sum(float(qty) for _, qty in asks),
+                                volume_ratio=1.0,
+                                liquidity_score=0.8,
+                                timestamp=datetime.now(),
+                                source=DataSource.REST_API
+                            )
+                            
+                            # Сохраняем в кэш
+                            self.orderbook_cache[symbol] = orderbook_data
+                            print(f"✅ Orderbook для {symbol} получен через REST API")
+                            return orderbook_data
+                except Exception as e:
+                    print(f"❌ Ошибка получения orderbook через REST API для {symbol}: {e}")
+                    return None
+            
+            # Запускаем асинхронную задачу
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Если цикл уже запущен, создаем задачу
+                task = asyncio.create_task(fetch_orderbook())
+                # Ждем результат с таймаутом
+                try:
+                    result = await asyncio.wait_for(task, timeout=5.0)
+                    return result
+                except asyncio.TimeoutError:
+                    print(f"⏰ Таймаут получения orderbook для {symbol}")
+                    return None
+            else:
+                # Если цикл не запущен, запускаем новый
+                return await fetch_orderbook()
+                
+        except Exception as e:
+            print(f"❌ Ошибка fallback orderbook для {symbol}: {e}")
+            return None
     
     def get_trade_history(self, symbol: str) -> Optional[TradeHistoryData]:
         """Получение истории сделок"""
@@ -805,15 +915,15 @@ class ComprehensiveDataManager:
     async def _orderbook_callback(self, order_book: OrderBook):
         """Callback для обновлений ордербука"""
         try:
-            print(f"🔄 ORDERBOOK CALLBACK ВЫЗВАН для {order_book.symbol}")
+            # print(f"🔄 ORDERBOOK CALLBACK ВЫЗВАН для {order_book.symbol}")
             symbol = order_book.symbol
             best_bid = order_book.get_best_bid()
             best_ask = order_book.get_best_ask()
             
-            print(f"   Лучшая покупка: {best_bid}")
-            print(f"   Лучшая продажа: {best_ask}")
-            print(f"   Количество bids: {len(order_book.bids)}")
-            print(f"   Количество asks: {len(order_book.asks)}")
+                    # print(f"   Лучшая покупка: {best_bid}")
+        # print(f"   Лучшая продажа: {best_ask}")
+        # print(f"   Количество bids: {len(order_book.bids)}")
+        # print(f"   Количество asks: {len(order_book.asks)}")
             
             if best_bid and best_ask:
                 # Конвертируем цены в числа
@@ -836,8 +946,8 @@ class ComprehensiveDataManager:
                 )
                 
                 self.orderbook_cache[symbol] = orderbook_data
-                print(f"✅ OrderBook данные сохранены в кэш для {symbol}")
-                print(f"   Спред: ${orderbook_data.spread:.4f} ({orderbook_data.spread_percent:.4f}%)")
+                # print(f"✅ OrderBook данные сохранены в кэш для {symbol}")
+                # print(f"   Спред: ${orderbook_data.spread:.4f} ({orderbook_data.spread_percent:.4f}%)")
                 
                 # Вызываем callbacks
                 for callback in self.orderbook_callbacks:
@@ -1359,4 +1469,7 @@ class ComprehensiveDataManager:
                 await self._add_price_to_correlation_cache(symbol, market_data.price)
                 
         except Exception as e:
-            print(f"Ошибка в ticker callback: {e}") 
+            print(f"Ошибка в ticker callback: {e}")
+
+# Глобальный экземпляр для использования в других модулях
+comprehensive_data_manager = ComprehensiveDataManager() 

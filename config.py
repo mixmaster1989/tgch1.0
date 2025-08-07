@@ -28,6 +28,15 @@ STOP_LOSS_PERCENT = 2.0
 TAKE_PROFIT_PERCENT = 5.0
 
 # Neural Network Configuration
-GOLDEN_MODEL = 'deepseek/deepseek-r1-0528:free'  # Бесплатная модель для торговых решений
-SILVER_MODEL = 'deepseek/deepseek-r1-0528:free'  # Бесплатная модель для чата
+GOLDEN_MODEL = 'anthropic/claude-opus-4'  # Claude Opus 4 для финальных решений
+SILVER_MODEL = 'openai/gpt-4o-mini'  # GPT-4o-mini для экспертов
+
+# AI Trading Models
+AI_EXPERT_MODELS = {
+    "openai": "openai/gpt-4o-mini",
+    "anthropic": "anthropic/claude-3.5-haiku", 
+    "google": "google/gemini-2.5-flash-lite"
+}
+
+AI_JUDGE_MODEL = "anthropic/claude-opus-4"
 ANALYSIS_INTERVAL = 300  # seconds

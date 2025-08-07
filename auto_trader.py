@@ -152,7 +152,7 @@ class AutoTrader:
     async def get_news_analysis(self) -> Dict:
         """Анализ новостей через Perplexity"""
         try:
-            news_data = await self.perplexity.collect_coin_data(self.symbol)
+            news_data = await self.perplexity.get_comprehensive_analysis(self.symbol)
             
             analysis = {
                 'sentiment': news_data.get('social_sentiment', 'neutral'),
