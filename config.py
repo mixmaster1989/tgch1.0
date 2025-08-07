@@ -8,6 +8,7 @@ MEX_API_KEY = os.getenv('MEX_API_KEY')
 MEX_SECRET_KEY = os.getenv('MEX_SECRET_KEY')
 MEX_BASE_URL = 'https://contract.mexc.com'
 MEX_SPOT_URL = 'https://api.mexc.com'
+MEX_WEBSOCKET_URL = 'wss://wbs.mexc.com/ws'
 
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')

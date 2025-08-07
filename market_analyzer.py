@@ -69,8 +69,15 @@ class MarketAnalyzer:
         current_price = closes[-1]
         
         # Изменение цены за последние периоды
-        price_change_1h = ((current_price - closes[-2]) / closes[-2]) * 100 if len(closes) > 1 else 0
-        price_change_24h = ((current_price - closes[-min(len(closes), 24)]) / closes[-min(len(closes), 24)]) * 100 if len(closes) > 1 else 0
+        price_change_1h = 0
+        if len(closes) > 1 and closes[-2] > 0:
+            price_change_1h = ((current_price - closes[-2]) / closes[-2]) * 100
+            
+        price_change_24h = 0
+        if len(closes) > 1:
+            prev_price_24h = closes[-min(len(closes), 24)]
+            if prev_price_24h > 0:
+                price_change_24h = ((current_price - prev_price_24h) / prev_price_24h) * 100
         
         # Средний объем
         vol_period = min(len(volumes), 20)
@@ -93,8 +100,13 @@ class MarketAnalyzer:
         
         avg_gain = sum(gains) / len(gains) if gains else 0
         avg_loss = sum(losses) / len(losses) if losses else 0.001
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
+        
+        # Защита от деления на ноль
+        if avg_loss == 0:
+            rsi = 50  # Нейтральное значение
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
         
         return {
             'current_price': current_price,
@@ -112,67 +124,80 @@ class MarketAnalyzer:
         candidates = []
         
         for ticker in market_data:
-            symbol = ticker['symbol']
-            price_change = float(ticker['priceChangePercent'])
-            volume = float(ticker['quoteVolume'])
-            
-            # Базовые фильтры (смягченные)
-            if (abs(price_change) > self.max_price_change or  # Слишком большое изменение
-                volume < self.min_volume_24h):  # Малый объем
-                continue
-            
-            # Получаем технические данные
-            klines = self.get_klines(symbol)
-            if not klines:
-                continue
+            try:
+                symbol = ticker['symbol']
+                price_change = float(ticker['priceChangePercent'])
+                volume = float(ticker['quoteVolume'])
                 
-            tech_data = self.calculate_technical_indicators(klines)
-            if not tech_data:
+                # Проверка на валидность данных
+                if volume <= 0 or price_change is None:
+                    continue
+                
+                # Базовые фильтры (смягченные)
+                if (abs(price_change) > self.max_price_change or  # Слишком большое изменение
+                    volume < self.min_volume_24h):  # Малый объем
+                    continue
+                
+                # Получаем технические данные
+                klines = self.get_klines(symbol)
+                if not klines:
+                    continue
+                    
+                tech_data = self.calculate_technical_indicators(klines)
+                if not tech_data:
+                    continue
+                
+                # Критерии отбора
+                score = 0
+                reasons = []
+                
+                # Объем выше среднего
+                if tech_data['volume_ratio'] > 1.5:
+                    score += 2
+                    reasons.append("высокий_объем")
+                
+                # RSI в зоне перепроданности/перекупленности
+                if 30 < tech_data['rsi'] < 70:
+                    score += 1
+                    reasons.append("нормальный_rsi")
+                elif tech_data['rsi'] < 35:
+                    score += 2
+                    reasons.append("перепродано")
+                
+                # Тренд
+                if tech_data['trend'] == 'UP' and tech_data['price_change_1h'] > 0:
+                    score += 2
+                    reasons.append("восходящий_тренд")
+                
+                # Цена выше SMA20
+                if tech_data['current_price'] > tech_data['sma_20']:
+                    score += 1
+                    reasons.append("выше_sma20")
+                
+                if score >= 1:  # Минимальный порог (снижен)
+                    candidates.append({
+                        'symbol': symbol,
+                        'score': score,
+                        'reasons': reasons,
+                        'current_price': tech_data['current_price'],
+                        'price_change_24h': price_change,
+                        'volume_24h': volume,
+                        'tech_data': tech_data
+                    })
+            except Exception as e:
+                print(f"Ошибка обработки {ticker.get('symbol', 'UNKNOWN')}: {e}")
                 continue
-            
-            # Критерии отбора
-            score = 0
-            reasons = []
-            
-            # Объем выше среднего
-            if tech_data['volume_ratio'] > 1.5:
-                score += 2
-                reasons.append("высокий_объем")
-            
-            # RSI в зоне перепроданности/перекупленности
-            if 30 < tech_data['rsi'] < 70:
-                score += 1
-                reasons.append("нормальный_rsi")
-            elif tech_data['rsi'] < 35:
-                score += 2
-                reasons.append("перепродано")
-            
-            # Тренд
-            if tech_data['trend'] == 'UP' and tech_data['price_change_1h'] > 0:
-                score += 2
-                reasons.append("восходящий_тренд")
-            
-            # Цена выше SMA20
-            if tech_data['current_price'] > tech_data['sma_20']:
-                score += 1
-                reasons.append("выше_sma20")
-            
-            if score >= 1:  # Минимальный порог (снижен)
-                candidates.append({
-                    'symbol': symbol,
-                    'score': score,
-                    'reasons': reasons,
-                    'current_price': tech_data['current_price'],
-                    'price_change_24h': price_change,
-                    'volume_24h': volume,
-                    'tech_data': tech_data
-                })
         
         # Сортируем по скору
         return sorted(candidates, key=lambda x: x['score'], reverse=True)[:10]
     
     def calculate_position_size(self, symbol: str, price: float, score: int) -> float:
         """Рассчитать размер позиции"""
+        # Проверка на валидность цены
+        if price <= 0:
+            print(f"Предупреждение: нулевая или отрицательная цена для {symbol}: {price}")
+            return 0.0
+            
         # Базовый размер позиции
         base_allocation = self.trading_balance * 0.1  # 10% от торгового баланса
         

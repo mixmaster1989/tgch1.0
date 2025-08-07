@@ -17,6 +17,10 @@ class NativeTraderBot:
         self.bot_username = "ingenerikarbot"
         # self.trading_engine = TradingEngine(simulation_mode=True)  # Торговый движок
         
+        # Планировщик для автоматической активности
+        self.last_activity_time = datetime.now()
+        self.activity_task = None
+        
         # Ключевые слова для реакции
         self.trigger_words = [
             'бот', 'трейдер', 'торговля', 'мекс', 'mex', 'ошибка', 'помощь', 
@@ -32,11 +36,183 @@ class NativeTraderBot:
             'heavy': ['пиздец', 'нахуй', 'ебать', 'сука блядь', 'охуеть']
         }
         
+        # Типы автоматической активности
+        self.activity_types = [
+            'market_analysis', 'trading_plans', 'project_status', 
+            'crypto_news', 'technical_tips', 'mood_check'
+        ]
+        
         self.setup_handlers()
+        self.setup_scheduler()
     
     def setup_handlers(self):
         """Настройка обработчиков сообщений"""
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+    
+    def setup_scheduler(self):
+        """Настройка планировщика автоматической активности"""
+        print("🤖 Планировщик активности настроен - каждые 30 минут")
+    
+    async def periodic_activity(self):
+        """Периодическая активность бота"""
+        try:
+            # Выбираем случайный тип активности
+            activity_type = random.choice(self.activity_types)
+            
+            if activity_type == 'market_analysis':
+                await self.market_analysis_activity()
+            elif activity_type == 'trading_plans':
+                await self.trading_plans_activity()
+            elif activity_type == 'project_status':
+                await self.project_status_activity()
+            elif activity_type == 'crypto_news':
+                await self.crypto_news_activity()
+            elif activity_type == 'technical_tips':
+                await self.technical_tips_activity()
+            elif activity_type == 'mood_check':
+                await self.mood_check_activity()
+                
+            self.last_activity_time = datetime.now()
+            
+        except Exception as e:
+            print(f"Ошибка периодической активности: {e}")
+    
+    async def market_analysis_activity(self):
+        """Активность: анализ рынка"""
+        try:
+            from market_analyzer import MarketAnalyzer
+            
+            await self.send_message("🔍 Проверяю рынок...")
+            
+            market_analyzer = MarketAnalyzer()
+            market_data = market_analyzer.get_market_data()
+            
+            if market_data:
+                # Быстрый анализ топ-3
+                candidates = market_analyzer.filter_trading_candidates(market_data[:20])
+                
+                if candidates:
+                    top_candidate = candidates[0]
+                    await self.send_message(
+                        f"📊 РЫНОК СЕЙЧАС:\n"
+                        f"🔥 Топ кандидат: {top_candidate['symbol']}\n"
+                        f"💰 Цена: ${top_candidate['current_price']:.6f}\n"
+                        f"📈 Изменение: {top_candidate['price_change_24h']:.2f}%\n"
+                        f"⭐ Скор: {top_candidate['score']}\n"
+                        f"📄 Причины: {', '.join(top_candidate['reasons'])}"
+                    )
+                else:
+                    await self.send_message("😴 Рынок спокойный, ждем лучших возможностей...")
+            else:
+                await self.send_message("❌ Не могу получить данные рынка")
+                
+        except Exception as e:
+            await self.send_message(f"Блядь, анализ рынка сломался: {str(e)[:50]}...")
+    
+    async def trading_plans_activity(self):
+        """Активность: торговые планы"""
+        try:
+            # Получаем план от ИИ
+            prompt = f"""Ты Трейдер (@ingenerikarbot) - опытный трейдер.
+
+Создай краткий торговый план на ближайшие часы. Что будем покупать когда допишем проект?
+
+Учитывай:
+- Текущее время: {datetime.now().strftime('%H:%M')}
+- Мы разрабатываем MEX Trading Bot
+- Нужны идеи для спот-торговли
+- Будь конкретным с монетами и ценами
+
+Ответь как живой трейдер, можешь материться."""
+
+            result = self.openrouter.request_with_silver_keys(prompt)
+            
+            if result['success']:
+                await self.send_message(f"📋 ТОРГОВЫЙ ПЛАН:\n{result['response']}")
+            else:
+                await self.send_message("Хрен, ИИ не хочет планировать...")
+                
+        except Exception as e:
+            await self.send_message(f"Капец, планирование сломалось: {str(e)[:50]}...")
+    
+    async def project_status_activity(self):
+        """Активность: статус проекта"""
+        try:
+            status_messages = [
+                "🚀 MEX Bot работает стабильно! API ключи живы, OpenRouter отвечает.",
+                "⚡ Проект в активной разработке. Скоро добавим новые фичи!",
+                "🔧 Система мониторинга активна. Все компоненты работают.",
+                "📱 Telegram бот готов к работе. Ждем команды!",
+                "🤖 ИИ анализатор настроен. Готов к торговым решениям."
+            ]
+            
+            await self.send_message(random.choice(status_messages))
+            
+        except Exception as e:
+            await self.send_message(f"Статус проекта: все работает, {self.get_swear_word()}!")
+    
+    async def crypto_news_activity(self):
+        """Активность: крипто новости"""
+        try:
+            prompt = f"""Ты Трейдер (@ingenerikarbot).
+
+Дай краткую сводку по крипторынку сейчас. Что происходит с BTC, ETH? Есть ли интересные новости?
+
+Будь кратким, как в чате. Можешь материться."""
+
+            result = self.openrouter.request_with_silver_keys(prompt)
+            
+            if result['success']:
+                await self.send_message(f"📰 КРИПТО НОВОСТИ:\n{result['response']}")
+            else:
+                await self.send_message("Новости: рынок живой, {self.get_swear_word()}!")
+                
+        except Exception as e:
+            await self.send_message("Новости: все идет по плану!")
+    
+    async def technical_tips_activity(self):
+        """Активность: технические советы"""
+        try:
+            tips = [
+                "💡 Совет: всегда проверяй объем перед входом в позицию",
+                "⚡ Трюк: используй RSI для определения перекупленности",
+                "🎯 Лайфхак: ставь стоп-лосс сразу при входе",
+                "📊 Фишка: следи за уровнем поддержки/сопротивления",
+                "🔍 Важно: анализируй несколько таймфреймов"
+            ]
+            
+            await self.send_message(random.choice(tips))
+            
+        except Exception as e:
+            await self.send_message("Совет: не торгуй на эмоциях!")
+    
+    async def mood_check_activity(self):
+        """Активность: проверка настроения"""
+        try:
+            moods = [
+                f"😎 Настроение: готов к торговле! {self.get_swear_word().capitalize()}!",
+                "🤔 Думаю о новых стратегиях...",
+                "🔥 В боевом настроении! Рынок ждет!",
+                "😴 Немного устал от мониторинга, но держусь!",
+                "🚀 Энергия зашкаливает! Готов к прибыли!"
+            ]
+            
+            await self.send_message(random.choice(moods))
+            
+        except Exception as e:
+            await self.send_message("Настроение: боевое!")
+    
+    async def send_message(self, text: str):
+        """Отправить сообщение в группу"""
+        try:
+            await self.app.bot.send_message(
+                chat_id=self.target_chat_id,
+                text=text
+            )
+            # Логируем свое сообщение
+            self.log_message(text, "Трейдер", datetime.now())
+        except Exception as e:
+            print(f"Ошибка отправки сообщения: {e}")
     
     def log_message(self, message_text: str, user_name: str, timestamp: datetime):
         """Логирование сообщения в историю"""
@@ -275,4 +451,40 @@ class NativeTraderBot:
     def run(self):
         """Запуск бота"""
         print("Трейдер заходит в группу...")
-        self.app.run_polling()
+        
+        # Запускаем фоновую задачу для периодической активности
+        async def run_with_activity():
+            # Запускаем планировщик активности
+            activity_task = asyncio.create_task(self.activity_loop())
+            
+            # Запускаем бота
+            await self.app.initialize()
+            await self.app.start()
+            await self.app.updater.start_polling()
+            
+            try:
+                # Ждем завершения активности
+                await activity_task
+            except KeyboardInterrupt:
+                print("Остановка бота...")
+            finally:
+                await self.app.updater.stop()
+                await self.app.stop()
+                await self.app.shutdown()
+        
+        # Запускаем асинхронную функцию
+        asyncio.run(run_with_activity())
+    
+    async def activity_loop(self):
+        """Цикл автоматической активности"""
+        while True:
+            try:
+                # Ждем 30 минут
+                await asyncio.sleep(30 * 60)  # 30 минут
+                
+                # Выполняем случайную активность
+                await self.periodic_activity()
+                
+            except Exception as e:
+                print(f"Ошибка в цикле активности: {e}")
+                await asyncio.sleep(60)  # Ждем минуту при ошибке
