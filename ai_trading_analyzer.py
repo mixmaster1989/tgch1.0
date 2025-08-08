@@ -2,6 +2,17 @@
 """
 AI Trading Analyzer - Система принятия торговых решений
 Архитектура: 3 эксперта (OpenAI, Anthropic, Google) + судья (Claude Opus)
+
+🔧 РЕЖИМ ЗАГЛУШЕК:
+- self.STUBS_MODE = True  -> Используются заглушки (экономия кредитов)
+- self.STUBS_MODE = False -> Используются реальные нейронки
+
+Для активации реальных нейронок:
+1. Пополнить кредиты OpenRouter
+2. Установить self.STUBS_MODE = False
+3. Протестировать систему
+
+Заглушки генерируют реалистичные ответы для тестирования архитектуры.
 """
 
 import asyncio
@@ -35,6 +46,9 @@ class AITradingAnalyzer:
         self.max_risk_per_trade = 5.0  # $5
         self.stop_loss_percent = 2.0
         self.take_profit_percent = 4.0
+        
+        # 🔧 РЕЖИМ ЗАГЛУШЕК (для экономии кредитов)
+        self.STUBS_MODE = True  # True = заглушки, False = реальные нейронки
     
     def prepare_data_for_analysis(self, market_data: Dict, perplexity_data: Dict) -> Dict:
         """Подготовить данные для анализа (без повторного запуска)"""
@@ -122,6 +136,63 @@ class AITradingAnalyzer:
             prompt = self._create_expert_prompt(data, expert_name)
             model = self.expert_models[expert_name]
             
+            # 🔧 РЕЖИМ ЗАГЛУШЕК
+            if self.STUBS_MODE:
+                print(f"🔧 ЗАГЛУШКА: {expert_name} эксперт (режим экономии кредитов)")
+                
+                # Генерируем реалистичные заглушки для каждого эксперта
+                if expert_name == "openai":
+                    return {
+                        "decision": "BUY",
+                        "confidence": 0.75,
+                        "reason": f"[ЗАГЛУШКА] OpenAI GPT-4o-mini: Позитивные сигналы на основе технического анализа и новостного фона. RSI показывает умеренную перекупленность, но MACD остается положительным. Новостной фон благоприятный.",
+                        "risk_level": "MEDIUM",
+                        "order": {
+                            "type": "LIMIT",
+                            "side": "BUY",
+                            "quantity": 0.001,
+                            "price": 3908.28,
+                            "stop_loss": 3830.11,
+                            "take_profit": 4064.61
+                        },
+                        "expert": expert_name
+                    }
+                elif expert_name == "anthropic":
+                    return {
+                        "decision": "HOLD",
+                        "confidence": 0.60,
+                        "reason": f"[ЗАГЛУШКА] Anthropic Claude 3.5 Haiku: Рынок в состоянии неопределенности. Технические индикаторы смешанные, новостной фон умеренно позитивный. Рекомендуется выжидательная позиция.",
+                        "risk_level": "LOW",
+                        "order": None,
+                        "expert": expert_name
+                    }
+                elif expert_name == "google":
+                    return {
+                        "decision": "SELL",
+                        "confidence": 0.65,
+                        "reason": f"[ЗАГЛУШКА] Google Gemini 2.5 Flash Lite: Отрицательные сигналы преобладают. RSI в зоне перекупленности, объемы снижаются. Рекомендуется фиксация прибыли.",
+                        "risk_level": "MEDIUM",
+                        "order": {
+                            "type": "LIMIT",
+                            "side": "SELL",
+                            "quantity": 0.001,
+                            "price": 3908.28,
+                            "stop_loss": 3986.45,
+                            "take_profit": 3751.95
+                        },
+                        "expert": expert_name
+                    }
+                else:
+                    return {
+                        "decision": "HOLD",
+                        "confidence": 0.0,
+                        "reason": f"[ЗАГЛУШКА] Неизвестный эксперт {expert_name}",
+                        "risk_level": "HIGH",
+                        "order": None,
+                        "expert": expert_name
+                    }
+            
+            # 🔧 РЕАЛЬНЫЙ РЕЖИМ (если STUBS_MODE = False)
             # Используем silver keys для экспертов
             result = self.openrouter.request_with_silver_keys(prompt, model)
             
@@ -251,6 +322,45 @@ class AITradingAnalyzer:
         try:
             prompt = self._create_judge_prompt(data, expert_decisions)
             
+            # 🔧 РЕЖИМ ЗАГЛУШЕК
+            if self.STUBS_MODE:
+                print(f"🔧 ЗАГЛУШКА: Судья Claude Opus 4 (режим экономии кредитов)")
+                
+                # Анализируем решения экспертов для реалистичной заглушки
+                buy_votes = sum(1 for d in expert_decisions if d.get('decision') == 'BUY')
+                sell_votes = sum(1 for d in expert_decisions if d.get('decision') == 'SELL')
+                hold_votes = sum(1 for d in expert_decisions if d.get('decision') == 'HOLD')
+                
+                avg_confidence = sum(d.get('confidence', 0) for d in expert_decisions) / len(expert_decisions)
+                
+                # Принимаем решение на основе голосов экспертов
+                if buy_votes > sell_votes and buy_votes > hold_votes:
+                    final_decision = "BUY"
+                    confidence = min(0.85, avg_confidence + 0.1)
+                    reason = f"[ЗАГЛУШКА] Судья: Большинство экспертов ({buy_votes}/{len(expert_decisions)}) рекомендуют покупку. Средняя уверенность: {avg_confidence:.2f}. Технические и фундаментальные факторы поддерживают бычий тренд."
+                elif sell_votes > buy_votes and sell_votes > hold_votes:
+                    final_decision = "SELL"
+                    confidence = min(0.85, avg_confidence + 0.1)
+                    reason = f"[ЗАГЛУШКА] Судья: Большинство экспертов ({sell_votes}/{len(expert_decisions)}) рекомендуют продажу. Средняя уверенность: {avg_confidence:.2f}. Преобладают медвежьи сигналы."
+                else:
+                    final_decision = "HOLD"
+                    confidence = min(0.75, avg_confidence + 0.05)
+                    reason = f"[ЗАГЛУШКА] Судья: Нет четкого консенсуса среди экспертов (BUY:{buy_votes}, SELL:{sell_votes}, HOLD:{hold_votes}). Рекомендуется выжидательная позиция до появления более четких сигналов."
+                
+                return {
+                    "final_decision": final_decision,
+                    "confidence": confidence,
+                    "reason": reason,
+                    "expert_analysis": {
+                        "best_expert": "google" if any(d.get('expert') == 'google' for d in expert_decisions) else "openai",
+                        "expert_agreement": f"BUY:{buy_votes}, SELL:{sell_votes}, HOLD:{hold_votes}",
+                        "risk_assessment": "Умеренный риск при отсутствии четкого консенсуса"
+                    },
+                    "order": None,  # Судья не выставляет ордера напрямую
+                    "judge": "Claude Opus 4"
+                }
+            
+            # 🔧 РЕАЛЬНЫЙ РЕЖИМ (если STUBS_MODE = False)
             # Используем golden key для судьи
             result = self.openrouter.request_with_golden_key(prompt, self.judge_model)
             

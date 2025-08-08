@@ -624,31 +624,69 @@ class ComprehensiveDataManager:
         if multitimeframe:
             return multitimeframe.indicators.get(interval)
         
-        # Если нет данных в кэше, запускаем РЕАЛЬНЫЕ расчеты
-        try:
-            # Запускаем асинхронный расчет индикаторов
-            import asyncio
-            
-            # Создаем новый event loop для этого вызова
-            try:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                new_loop.run_until_complete(self._calculate_technical_indicators(symbol, interval))
-                new_loop.close()
-            except Exception as loop_error:
-                print(f"Ошибка event loop для {symbol}: {loop_error}")
-                # Fallback: пробуем синхронный вызов
-                pass
-            
-            # Теперь пробуем получить из кэша
-            multitimeframe = self.get_multitimeframe_data(symbol)
-            if multitimeframe:
-                return multitimeframe.indicators.get(interval)
-            
+        # Если нет данных в кэше, проверяем есть ли свечи
+        klines = self.kline_cache.get((symbol, interval), [])
+        if len(klines) < 20:
+            print(f"📊 Недостаточно свечей для {symbol} ({interval}): {len(klines)}/20")
+            # Просто возвращаем None - данные загрузятся асинхронно
             return None
+        
+        # Если есть свечи, вычисляем индикаторы синхронно
+        try:
+            # Подготавливаем данные для индикаторов
+            klines = self.kline_cache.get((symbol, interval), [])
+            if len(klines) < 20:
+                return None
+                
+            klines_data = [[kline.timestamp, kline.open, kline.high, kline.low, kline.close, kline.volume] for kline in klines]
+            indicators = self.technical_indicators.calculate_all_indicators(klines_data, symbol)
+            
+            if not indicators:
+                return None
+            
+            # Извлекаем значения
+            rsi_14 = indicators.get('rsi_14', 50.0)
+            sma_20 = indicators.get('sma_20', 0.0)
+            ema_12 = indicators.get('ema_12', 0.0)
+            macd = indicators.get('macd', {})
+            bollinger = indicators.get('bollinger', {})
+            atr_14 = indicators.get('atr_14', 0.0)
+            volume_sma = indicators.get('volume_sma', 0.0)
+            
+            # Создаем TechnicalIndicatorsData
+            indicators_data = TechnicalIndicatorsData(
+                symbol=symbol,
+                rsi_14=rsi_14,
+                sma_20=sma_20,
+                ema_12=ema_12,
+                macd=macd,
+                bollinger=bollinger,
+                atr_14=atr_14,
+                volume_sma=volume_sma,
+                signals={},
+                timestamp=datetime.now(),
+                source=DataSource.CALCULATED
+            )
+            
+            # Обновляем мультитаймфрейм кэш
+            if symbol not in self.multitimeframe_cache:
+                self.multitimeframe_cache[symbol] = MultiTimeframeData(
+                    symbol=symbol,
+                    timeframes={},
+                    indicators={},
+                    timestamp=datetime.now(),
+                    source=DataSource.CALCULATED
+                )
+            
+            self.multitimeframe_cache[symbol].timeframes[interval] = klines
+            self.multitimeframe_cache[symbol].indicators[interval] = indicators_data
+            self.multitimeframe_cache[symbol].timestamp = datetime.now()
+            
+            print(f"📈 Вычислены индикаторы для {symbol} ({interval})")
+            return indicators_data
             
         except Exception as e:
-            print(f"Ошибка расчета технических индикаторов для {symbol}: {e}")
+            print(f"❌ Ошибка расчета технических индикаторов для {symbol}: {e}")
             return None
     
     def get_correlation_data(self, symbol: str) -> Dict:
@@ -900,6 +938,10 @@ class ComprehensiveDataManager:
                     
                     print(f"✅ Подписка на {symbol} успешна")
                     
+                    # ЗАГРУЖАЕМ ИСТОРИЧЕСКИЕ ДАННЫЕ ДЛЯ ТЕХНИЧЕСКИХ ИНДИКАТОРОВ
+                    print(f"📊 Загружаем исторические данные для {symbol}...")
+                    await self._load_historical_data_for_symbol(symbol)
+                    
                     # ДОБАВЛЯЕМ ТЕСТОВЫЕ ДАННЫЕ ДЛЯ СДЕЛОК (так как MEXC не отправляет их)
                     await self._add_test_trade_data(symbol)
                     
@@ -1119,68 +1161,13 @@ class ComprehensiveDataManager:
             print(f"Ошибка загрузки исторических данных для {symbol}: {e}")
     
     async def _calculate_technical_indicators(self, symbol: str, interval: str):
-        """Вычисление технических индикаторов"""
+        """Вычисление технических индикаторов (асинхронная версия)"""
         try:
-            klines = self.kline_cache.get((symbol, interval), [])
-            
-            if len(klines) < 20:
-                return
-            
-            # Подготавливаем данные для индикаторов
-            closes = [kline.close for kline in klines]
-            highs = [kline.high for kline in klines]
-            lows = [kline.low for kline in klines]
-            volumes = [kline.volume for kline in klines]
-            
-            # Вычисляем индикаторы через основной метод
-            klines_data = [[kline.timestamp, kline.open, kline.high, kline.low, kline.close, kline.volume] for kline in klines]
-            indicators = self.technical_indicators.calculate_all_indicators(klines_data, symbol)
-            
-            if not indicators:
-                return
-            
-            # Извлекаем значения
-            rsi_14 = indicators.get('rsi_14', 50.0)
-            sma_20 = indicators.get('sma_20', 0.0)
-            ema_12 = indicators.get('ema_12', 0.0)
-            macd = indicators.get('macd', {})
-            bollinger = indicators.get('bollinger', {})  # Исправлено: 'bollinger' вместо 'bollinger_bands'
-            atr_14 = indicators.get('atr_14', 0.0)
-            volume_sma = indicators.get('volume_sma', 0.0)
-            
-            # Создаем TechnicalIndicatorsData
-            indicators_data = TechnicalIndicatorsData(
-                symbol=symbol,
-                rsi_14=rsi_14,
-                sma_20=sma_20,
-                ema_12=ema_12,
-                macd=macd,
-                bollinger=bollinger,
-                atr_14=atr_14,
-                volume_sma=volume_sma,
-                signals={},
-                timestamp=datetime.now(),
-                source=DataSource.CALCULATED
-            )
-            
-            # Обновляем мультитаймфрейм кэш
-            if symbol not in self.multitimeframe_cache:
-                self.multitimeframe_cache[symbol] = MultiTimeframeData(
-                    symbol=symbol,
-                    timeframes={},
-                    indicators={},
-                    timestamp=datetime.now(),
-                    source=DataSource.CALCULATED
-                )
-            
-            self.multitimeframe_cache[symbol].timeframes[interval] = klines
-            self.multitimeframe_cache[symbol].indicators[interval] = indicators_data
-            self.multitimeframe_cache[symbol].timestamp = datetime.now()
-            
-            print(f"📈 Вычислены индикаторы для {symbol} ({interval})")
-            
+            # Просто вызываем синхронную версию
+            return self.get_technical_indicators(symbol, interval)
         except Exception as e:
-            print(f"Ошибка вычисления индикаторов для {symbol}: {e}")
+            print(f"❌ Ошибка вычисления индикаторов для {symbol}: {e}")
+            return None
     
     def get_trading_candidates(self, min_volume: float = 10000) -> List[Dict]:
         """Получение кандидатов для торговли"""
