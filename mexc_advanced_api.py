@@ -69,31 +69,63 @@ class MexAdvancedAPI:
         Возвращает: минимальный лот, точность цены, статус торговли
         """
         try:
-            exchange_info = self.get_exchange_info()
+            exchange_info = self.get_exchange_info(symbol)
             
-            if 'symbols' not in exchange_info:
+            symbols = exchange_info.get('symbols') or exchange_info.get('data') or []
+            if not symbols:
                 return {}
             
-            # Ищем нужную пару
-            for symbol_info in exchange_info['symbols']:
-                if symbol_info['symbol'] == symbol:
-                    return {
-                        'symbol': symbol,
-                        'status': symbol_info.get('status', 'UNKNOWN'),
-                        'baseAsset': symbol_info.get('baseAsset', ''),
-                        'quoteAsset': symbol_info.get('quoteAsset', ''),
-                        'minQty': float(symbol_info.get('filters', [{}])[0].get('minQty', 0)),
-                        'maxQty': float(symbol_info.get('filters', [{}])[0].get('maxQty', 0)),
-                        'stepSize': float(symbol_info.get('filters', [{}])[0].get('stepSize', 0)),
-                        'minPrice': float(symbol_info.get('filters', [{}])[1].get('minPrice', 0)),
-                        'maxPrice': float(symbol_info.get('filters', [{}])[1].get('maxPrice', 0)),
-                        'tickSize': float(symbol_info.get('filters', [{}])[1].get('tickSize', 0)),
-                        'minNotional': float(symbol_info.get('filters', [{}])[2].get('minNotional', 0)),
-                        'pricePrecision': symbol_info.get('pricePrecision', 8),
-                        'quantityPrecision': symbol_info.get('quantityPrecision', 8)
-                    }
+            symbol_info = None
+            for s in symbols:
+                if s.get('symbol') == symbol:
+                    symbol_info = s
+                    break
+            if not symbol_info:
+                return {}
             
-            return {}
+            # Безопасно извлекаем фильтры по именам
+            filters = symbol_info.get('filters', []) or []
+            by_type = {}
+            for f in filters:
+                ft = f.get('filterType') or f.get('filter_type') or f.get('type')
+                if ft:
+                    by_type[ft] = f
+            
+            lot = by_type.get('LOT_SIZE', {})
+            pricef = by_type.get('PRICE_FILTER', {})
+            min_notional_f = by_type.get('MIN_NOTIONAL') or by_type.get('NOTIONAL') or {}
+            
+            def as_float(d: Dict, key: str, default: float = 0.0) -> float:
+                try:
+                    return float(d.get(key, default))
+                except Exception:
+                    return default
+            
+            min_qty = as_float(lot, 'minQty', as_float(lot, 'min_qty', 0.0))
+            step_size = as_float(lot, 'stepSize', as_float(lot, 'step_size', 0.0))
+            min_price = as_float(pricef, 'minPrice', as_float(pricef, 'min_price', 0.0))
+            tick_size = as_float(pricef, 'tickSize', as_float(pricef, 'tick_size', 0.0))
+            min_notional = as_float(min_notional_f, 'minNotional', as_float(min_notional_f, 'min_notional', 5.0))
+            
+            # Точности, если есть
+            price_precision = symbol_info.get('pricePrecision') or symbol_info.get('price_precision') or 8
+            quantity_precision = symbol_info.get('quantityPrecision') or symbol_info.get('quantity_precision') or 8
+            
+            return {
+                'symbol': symbol,
+                'status': symbol_info.get('status', 'UNKNOWN'),
+                'baseAsset': symbol_info.get('baseAsset', ''),
+                'quoteAsset': symbol_info.get('quoteAsset', ''),
+                'minQty': min_qty,
+                'maxQty': as_float(lot, 'maxQty', as_float(lot, 'max_qty', 0.0)),
+                'stepSize': step_size or (10 ** -int(quantity_precision)),
+                'minPrice': min_price,
+                'maxPrice': as_float(pricef, 'maxPrice', as_float(pricef, 'max_price', 0.0)),
+                'tickSize': tick_size or (10 ** -int(price_precision)),
+                'minNotional': min_notional if min_notional > 0 else 5.0,
+                'pricePrecision': int(price_precision),
+                'quantityPrecision': int(quantity_precision)
+            }
             
         except Exception as e:
             print(f"Ошибка получения правил для {symbol}: {e}")

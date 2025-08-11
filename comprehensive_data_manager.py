@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Комплексный менеджер данных для MEXC Trading Bot
-Управляет всеми источниками данных: WebSocket, REST API, Perplexity, базы данных
+Управляет всеми источниками данных: WebSocket, REST API, базы данных
 """
 
 import asyncio
@@ -22,7 +22,7 @@ import math
 # Импорты компонентов
 from mexc_websocket_client import MEXCWebSocketClient, StreamType, OrderBook
 from mex_api import MexAPI
-from perplexity_analyzer import PerplexityAnalyzer
+# from perplexity_analyzer import PerplexityAnalyzer  # Убрано - платный сервис
 from technical_indicators import TechnicalIndicators
 from correlation_analyzer import CorrelationAnalyzer
 from advanced_correlation_analyzer import advanced_correlation_analyzer
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 class DataSource(Enum):
     WEBSOCKET = "websocket"
     REST_API = "rest_api"
-    PERPLEXITY = "perplexity"
+    # PERPLEXITY = "perplexity"  # Убрано - платный сервис
     CALCULATED = "calculated"
 
 @dataclass
@@ -219,7 +219,7 @@ class ComprehensiveDataManager:
         self.rest_api = MexAPI()
         self.mex_api = self.rest_api  # Алиас для совместимости
         self.websocket_client = MEXCWebSocketClient()
-        self.perplexity = PerplexityAnalyzer()
+        # self.perplexity = PerplexityAnalyzer()  # Убрано - платный сервис
         self.technical_indicators = TechnicalIndicators()
         self.correlation_analyzer = CorrelationAnalyzer()
         self.redis_cache = RedisCacheManager()
@@ -243,6 +243,10 @@ class ComprehensiveDataManager:
         self.is_running = False
         self.tasks = []
         
+        # Система записи данных в файл
+        self.data_log_file = "market_data_log.txt"
+        self.data_log_enabled = True
+        
         # Корреляционный анализатор (уже инициализирован выше)
         # self.correlation_analyzer = CorrelationAnalyzer()  # Убираем дублирование
     
@@ -260,6 +264,11 @@ class ComprehensiveDataManager:
             # КРИТИЧНО: Загружаем исторические данные для корреляций
             await self._load_historical_data_for_correlations()
             
+            # 🔍 КРИТИЧНО: Получаем символы из аккаунта и подписываемся на них
+            account_symbols = self._get_account_symbols()
+            print(f"📊 Подписываемся на {len(account_symbols)} символов из аккаунта: {', '.join(account_symbols)}")
+            await self.subscribe_multiple_symbols(account_symbols)
+            
             # Запуск фоновых задач
             self.is_running = True
             
@@ -272,14 +281,29 @@ class ComprehensiveDataManager:
                 asyncio.create_task(self._market_data_loop()),
                 asyncio.create_task(self._klines_data_loop()),
                 asyncio.create_task(self._account_data_loop()),
-                asyncio.create_task(self._news_data_loop()),
+                # asyncio.create_task(self._news_data_loop()),  # ОТКЛЮЧЕНО: Perplexity убран
                 # asyncio.create_task(self._correlation_data_loop())  # ВРЕМЕННО ОТКЛЮЧЕНО: Цикл корреляций
             ]
             
             print("✅ Комплексный менеджер данных запущен")
             
+            # Записываем данные запуска в файл
+            self._log_data_to_file("manager_start", {
+                'status': 'started',
+                'symbols_count': len(account_symbols),
+                'symbols': account_symbols,
+                'timestamp': datetime.now().isoformat()
+            })
+            
         except Exception as e:
             print(f"❌ Ошибка запуска менеджера данных: {e}")
+            
+            # Записываем ошибку запуска в файл
+            self._log_data_to_file("manager_start_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             raise
     
     async def stop(self):
@@ -313,8 +337,21 @@ class ComprehensiveDataManager:
             
             print("✅ Комплексный менеджер данных остановлен")
             
+            # Записываем данные остановки в файл
+            self._log_data_to_file("manager_stop", {
+                'status': 'stopped',
+                'timestamp': datetime.now().isoformat()
+            })
+            
         except Exception as e:
             print(f"❌ Ошибка остановки менеджера данных: {e}")
+            
+            # Записываем ошибку остановки в файл
+            self._log_data_to_file("manager_stop_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             import traceback
             traceback.print_exc()
     
@@ -327,52 +364,156 @@ class ComprehensiveDataManager:
                 
             except Exception as e:
                 print(f"Ошибка в WebSocket handler: {e}")
+                
+                # Записываем ошибку WebSocket в файл
+                self._log_data_to_file("websocket_error", {
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 await asyncio.sleep(5)
     
+    def _get_account_symbols(self) -> List[str]:
+        """Получает список символов из позиций аккаунта"""
+        try:
+            account_info = self.rest_api.get_account_info()
+            if not account_info:
+                print("⚠️ Не удалось получить данные аккаунта, используем базовый список")
+                return ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT', 'BNBUSDT']
+            
+            symbols = set()
+            
+            # Сканируем балансы (спот)
+            for balance in account_info.get('balances', []):
+                asset = balance.get('asset', '')
+                free = float(balance.get('free', 0))
+                locked = float(balance.get('locked', 0))
+                total = free + locked
+                
+                # Добавляем только активы с положительным балансом (исключаем USDT/USDC)
+                if total > 0 and asset not in ['USDT', 'USDC']:
+                    # Конвертируем в символ торговой пары
+                    symbol = f"{asset}USDT"
+                    symbols.add(symbol)
+                    print(f"   💰 {asset}: {total:.6f} -> {symbol}")
+            
+            # Сканируем фьючерсные позиции
+            for position in account_info.get('positions', []):
+                symbol = position.get('symbol', '')
+                position_amt = float(position.get('positionAmt', 0))
+                if symbol and position_amt != 0:
+                    symbols.add(symbol)
+                    print(f"   📈 Фьючерс {symbol}: {position_amt:.6f}")
+            
+            # Сканируем открытые ордера
+            for order in account_info.get('openOrders', []):
+                symbol = order.get('symbol', '')
+                side = order.get('side', '')
+                quantity = float(order.get('origQty', 0))
+                if symbol and quantity > 0:
+                    symbols.add(symbol)
+                    print(f"   📋 Ордер {symbol} {side}: {quantity:.6f}")
+            
+            # Если ничего не найдено, используем базовый список
+            if not symbols:
+                print("⚠️ В аккаунте нет активных позиций, используем базовый список")
+                return ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT', 'BNBUSDT']
+            
+            # Конвертируем в список и сортируем
+            symbol_list = sorted(list(symbols))
+            print(f"🔍 Найдено {len(symbol_list)} активных символов в аккаунте: {', '.join(symbol_list)}")
+            
+            return symbol_list
+            
+        except Exception as e:
+            print(f"❌ Ошибка сканирования аккаунта: {e}, используем базовый список")
+            return ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT', 'BNBUSDT']
+
+    def _show_portfolio_summary(self):
+        """Показывает сводку портфеля"""
+        try:
+            portfolio = self.get_portfolio_summary()
+            if not portfolio:
+                return
+            
+            print("\n" + "="*60)
+            print("📊 СВОДКА ПОРТФЕЛЯ")
+            print("="*60)
+            print(f"💰 Общая стоимость: ${portfolio['total_usdt']:.2f}")
+            print(f"🔍 Активные символы: {', '.join(portfolio['active_symbols'])}")
+            
+            if portfolio['asset_values']:
+                print("\n💎 Стоимость активов:")
+                for asset, value in portfolio['asset_values'].items():
+                    if value > 0:
+                        print(f"   {asset}: ${value:.2f}")
+            
+            if portfolio['positions']:
+                print(f"\n📈 Фьючерсные позиции: {len(portfolio['positions'])}")
+            
+            if portfolio['open_orders']:
+                print(f"📋 Открытые ордера: {len(portfolio['open_orders'])}")
+            
+            print(f"⏰ Обновлено: {portfolio['timestamp']}")
+            print("="*60)
+            
+            # Записываем сводку портфеля в файл
+            self._log_data_to_file("portfolio_summary", {
+                'total_usdt': portfolio['total_usdt'],
+                'active_symbols_count': len(portfolio['active_symbols']),
+                'positions_count': len(portfolio['positions']),
+                'open_orders_count': len(portfolio['open_orders']),
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            print(f"Ошибка отображения сводки портфеля: {e}")
+
     async def _market_data_loop(self):
         """Цикл обновления рыночных данных через REST API"""
         while self.is_running:
             try:
-                # Получаем 24h данные для всех символов
-                tickers = self.rest_api.get_24hr_ticker()
+                # Получаем актуальный список символов из аккаунта
+                symbols = self._get_account_symbols()
                 
-                if isinstance(tickers, list):
-                    for ticker in tickers:
-                        symbol = ticker.get('symbol', '')
-                        if symbol.endswith('USDT'):
-                            price = float(ticker.get('lastPrice', 0))
-                            
+                for symbol in symbols:
+                    try:
+                        ticker_data = self.rest_api.get_ticker_price(symbol)
+                        if ticker_data and isinstance(ticker_data, dict) and 'price' in ticker_data:
+                            price = float(ticker_data['price'])
                             # Обновляем кэш
-                            self.market_cache[symbol] = MarketData(
+                            market_data = MarketData(
                                 symbol=symbol,
                                 price=price,
-                                change_24h=float(ticker.get('priceChangePercent', 0)),
-                                volume_24h=float(ticker.get('volume', 0)),
-                                quote_volume_24h=float(ticker.get('quoteVolume', 0)),
-                                high_24h=float(ticker.get('highPrice', 0)),
-                                low_24h=float(ticker.get('lowPrice', 0)),
+                                change_24h=0.0,
+                                volume_24h=0.0,
+                                quote_volume_24h=0.0,
+                                high_24h=price,
+                                low_24h=price,
                                 timestamp=datetime.now(),
                                 source=DataSource.REST_API
                             )
+                            self.market_cache[symbol] = market_data
+                            
+                            # Записываем данные в файл
+                            self._log_data_to_file("market_data", {
+                                'symbol': symbol,
+                                'price': price,
+                                'timestamp': datetime.now().isoformat()
+                            })
                             
                             # Сохраняем цену в БД
                             timestamp_ms = int(datetime.now().timestamp() * 1000)
                             self.save_price_to_db(symbol, price, timestamp_ms)
-                            
                             # Добавляем в корреляционный анализатор
                             from correlation_analyzer import add_price_to_correlation_analyzer
                             add_price_to_correlation_analyzer(symbol, price, timestamp_ms)
-                            
-                            # Добавляем еще несколько точек для корреляций
-                            for i in range(1, 10):
-                                # Добавляем небольшие вариации цены
-                                price_variation = price * (1 + (i * 0.001 - 0.005))  # ±0.5%
-                                add_price_to_correlation_analyzer(symbol, price_variation, timestamp_ms + i * 1000)
-                            
-                            # Логируем только основные активы
-                            if symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']:
-                                print(f"💰 REST: {symbol} = ${price}")
-                
+                            # Логируем все активные символы
+                            print(f"💰 REST: {symbol} = ${price}")
+                    except Exception as e:
+                        print(f"Ошибка обновления тикера для {symbol}: {e}")
+                        continue
+
                 # КРИТИЧНО: Получаем данные других активов для корреляций
                 await self._fetch_other_assets_data()
                 
@@ -386,8 +527,8 @@ class ComprehensiveDataManager:
         """Цикл обновления данных свечей"""
         while self.is_running:
             try:
-                # Получаем данные свечей для основных символов
-                symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT']
+                # Получаем актуальный список символов из аккаунта
+                symbols = self._get_account_symbols()
                 
                 for symbol in symbols:
                     # Получаем свечи за последний час
@@ -410,6 +551,15 @@ class ComprehensiveDataManager:
                         
                         # Обновляем кэш
                         self.kline_cache[(symbol, '1m')] = kline_data
+                        
+                        # Записываем данные свечей в файл
+                        self._log_data_to_file("klines", {
+                            'symbol': symbol,
+                            'interval': '1m',
+                            'count': len(kline_data),
+                            'last_close': kline_data[-1].close if kline_data else 0,
+                            'timestamp': datetime.now().isoformat()
+                        })
                         
                         # Вычисляем технические индикаторы
                         await self._calculate_technical_indicators(symbol, '1m')
@@ -453,12 +603,43 @@ class ComprehensiveDataManager:
                         source=DataSource.REST_API
                     )
                     
+                    # Записываем данные аккаунта в файл
+                    self._log_data_to_file("account", {
+                        'balances': balances,
+                        'total_usdt': total_usdt,
+                        'positions_count': len(account_info.get('positions', [])),
+                        'open_orders_count': len(account_info.get('openOrders', [])),
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    
+                    # 🔍 КРИТИЧНО: Проверяем изменения в символах аккаунта
+                    current_symbols = self._get_account_symbols()
+                    if not hasattr(self, '_last_account_symbols'):
+                        self._last_account_symbols = set()
+                    
+                    if set(current_symbols) != self._last_account_symbols:
+                        print(f"🔄 Обнаружены изменения в аккаунте!")
+                        print(f"   Было: {', '.join(sorted(self._last_account_symbols)) if self._last_account_symbols else 'пусто'}")
+                        print(f"   Стало: {', '.join(sorted(current_symbols))}")
+                        
+                        # Обновляем подписку на новые символы
+                        await self.subscribe_multiple_symbols(current_symbols)
+                        self._last_account_symbols = set(current_symbols)
+                    
                     # Вызываем callbacks
                     for callback in self.account_callbacks:
                         try:
                             await callback(account_data)
                         except Exception as e:
                             print(f"Ошибка в account callback: {e}")
+                    
+                    # Показываем сводку портфеля каждые 5 минут
+                    if hasattr(self, '_last_portfolio_log') and (datetime.now() - self._last_portfolio_log).seconds > 300:
+                        self._show_portfolio_summary()
+                        self._last_portfolio_log = datetime.now()
+                    elif not hasattr(self, '_last_portfolio_log'):
+                        self._last_portfolio_log = datetime.now()
+                        self._show_portfolio_summary()
                 
                 await asyncio.sleep(60)  # Обновляем каждую минуту
                 
@@ -470,30 +651,38 @@ class ComprehensiveDataManager:
         """Цикл обновления новостных данных"""
         while self.is_running:
             try:
-                # Получаем новости для основных символов
-                symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT']
+                # Получаем новости для символов из аккаунта
+                symbols = self._get_account_symbols()
                 
-                for symbol in symbols:
-                    # Получаем новости через Perplexity
-                    news_data = await self.perplexity.get_comprehensive_analysis(symbol)
-                    
-                    if news_data:
-                        # Создаем NewsData
-                        news_obj = NewsData(
-                            symbol=symbol,
-                            news=news_data.get('news', []),
-                            sentiment=news_data.get('sentiment', 'neutral'),
-                            impact_score=news_data.get('impact_score', 0.0),
-                            timestamp=datetime.now(),
-                            source=DataSource.PERPLEXITY
-                        )
-                        
-                        # Вызываем callbacks
-                        for callback in self.news_callbacks:
-                            try:
-                                await callback(news_obj)
-                            except Exception as e:
-                                print(f"Ошибка в news callback: {e}")
+                # Новости временно отключены - убран платный сервис Perplexity
+                # for symbol in symbols:
+                #     # Получаем новости через Perplexity
+                #     news_data = await self.perplexity.get_comprehensive_analysis(symbol)
+                #     
+                #     if news_data:
+                #         # Создаем NewsData
+                #         news_obj = NewsData(
+                #             symbol=symbol,
+                #             news=news_data.get('news', []),
+                #             sentiment=news_data.get('sentiment', 'neutral'),
+                #             impact_score=news_data.get('impact_score', 0.0),
+                #             timestamp=datetime.now(),
+                #             source=DataSource.PERPLEXITY
+                #         )
+                #         
+                #         # Вызываем callbacks
+                #         for callback in self.news_callbacks:
+                #             try:
+                #                 await callback(news_obj)
+                #             except Exception as e:
+                #                 print(f"Ошибка в news callback: {e}")
+                
+                # Записываем статус новостного цикла в файл
+                self._log_data_to_file("news_cycle", {
+                    'symbols_count': len(symbols),
+                    'status': 'news_disabled',
+                    'timestamp': datetime.now().isoformat()
+                })
                 
                 await asyncio.sleep(300)  # Обновляем каждые 5 минут
                 
@@ -537,11 +726,49 @@ class ComprehensiveDataManager:
                     
                     print("="*50 + "\n")
                 
+                # Записываем данные корреляционного цикла в файл
+                if correlation_data:
+                    self._log_data_to_file("correlation_cycle", {
+                        'symbol': 'ETHUSDT',
+                        'basic_correlations_count': len(correlation_data.get('basic_correlations', {})),
+                        'total_data_points': total_points if 'total_points' in locals() else 0,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                
                 await asyncio.sleep(60)  # Обновляем каждую минуту
                 
             except Exception as e:
                 print(f"Ошибка в correlation data loop: {e}")
                 await asyncio.sleep(60)
+    
+    def _log_data_to_file(self, data_type: str, data: Dict):
+        """Записывает данные в файл"""
+        if not self.data_log_enabled:
+            return
+            
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            with open(self.data_log_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n{'='*60}\n")
+                f.write(f"ТИП ДАННЫХ: {data_type}\n")
+                f.write(f"ВРЕМЯ: {timestamp}\n")
+                f.write(f"{'='*60}\n")
+                
+                # Записываем данные в читаемом формате
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        if isinstance(value, (dict, list)):
+                            f.write(f"{key}:\n{json.dumps(value, indent=2, ensure_ascii=False)}\n")
+                        else:
+                            f.write(f"{key}: {value}\n")
+                else:
+                    f.write(f"Данные: {data}\n")
+                    
+                f.write(f"{'='*60}\n")
+                
+        except Exception as e:
+            print(f"❌ Ошибка записи данных в файл: {e}")
     
     def _calculate_impact_score(self, news_data: Dict) -> float:
         """Вычисление оценки влияния новостей"""
@@ -681,6 +908,18 @@ class ComprehensiveDataManager:
             self.multitimeframe_cache[symbol].timeframes[interval] = klines
             self.multitimeframe_cache[symbol].indicators[interval] = indicators_data
             self.multitimeframe_cache[symbol].timestamp = datetime.now()
+            
+            # Записываем технические индикаторы в файл
+            self._log_data_to_file("technical_indicators", {
+                'symbol': symbol,
+                'interval': interval,
+                'rsi_14': rsi_14,
+                'sma_20': sma_20,
+                'ema_12': ema_12,
+                'atr_14': atr_14,
+                'volume_sma': volume_sma,
+                'timestamp': datetime.now().isoformat()
+            })
             
             print(f"📈 Вычислены индикаторы для {symbol} ({interval})")
             return indicators_data
@@ -951,8 +1190,22 @@ class ComprehensiveDataManager:
             
             print(f"✅ Подписка завершена для {len(symbols)} символов")
             
+            # Записываем данные подписки в файл
+            self._log_data_to_file("subscription_complete", {
+                'symbols_count': len(symbols),
+                'symbols': symbols,
+                'timestamp': datetime.now().isoformat()
+            })
+            
         except Exception as e:
             print(f"❌ Общая ошибка подписки на символы: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("subscription_error", {
+                'error': str(e),
+                'symbols': symbols,
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _orderbook_callback(self, order_book: OrderBook):
         """Callback для обновлений ордербука"""
@@ -988,6 +1241,17 @@ class ComprehensiveDataManager:
                 )
                 
                 self.orderbook_cache[symbol] = orderbook_data
+                
+                # Записываем данные ордербука в файл
+                self._log_data_to_file("orderbook", {
+                    'symbol': symbol,
+                    'spread': orderbook_data.spread,
+                    'spread_percent': orderbook_data.spread_percent,
+                    'bid_volume': orderbook_data.bid_volume,
+                    'ask_volume': orderbook_data.ask_volume,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 # print(f"✅ OrderBook данные сохранены в кэш для {symbol}")
                 # print(f"   Спред: ${orderbook_data.spread:.4f} ({orderbook_data.spread_percent:.4f}%)")
                 
@@ -1000,6 +1264,12 @@ class ComprehensiveDataManager:
                         
         except Exception as e:
             print(f"Ошибка в orderbook callback: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("orderbook_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _trade_callback(self, trade_data: Dict):
         """Callback для сделок"""
@@ -1026,6 +1296,15 @@ class ComprehensiveDataManager:
                 if len(self.trade_history_cache[symbol]) > 1000:
                     self.trade_history_cache[symbol] = self.trade_history_cache[symbol][-1000:]
                 
+                # Записываем данные сделки в файл
+                self._log_data_to_file("trade", {
+                    'symbol': symbol,
+                    'price': trade.price,
+                    'quantity': trade.quantity,
+                    'side': trade.side,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 print(f"💱 TRADE CALLBACK ВЫЗВАН для {symbol}")
                 print(f"   Цена: ${trade.price:.2f}")
                 print(f"   Количество: {trade.quantity:.4f}")
@@ -1041,6 +1320,12 @@ class ComprehensiveDataManager:
                         
         except Exception as e:
             print(f"Ошибка в trade callback: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("trade_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _kline_callback(self, kline_data: Dict):
         """Callback для свечей"""
@@ -1073,12 +1358,42 @@ class ComprehensiveDataManager:
                 if len(self.kline_cache[key]) > 1000:
                     self.kline_cache[key] = self.kline_cache[key][-1000:]
                 
+                # Записываем данные свечи в файл
+                self._log_data_to_file("kline", {
+                    'symbol': symbol,
+                    'interval': interval,
+                    'open': kline.open,
+                    'high': kline.high,
+                    'low': kline.low,
+                    'close': kline.close,
+                    'volume': kline.volume,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 # Вычисляем технические индикаторы
                 await self._calculate_technical_indicators(symbol, interval)
                 
         except Exception as e:
             print(f"Ошибка в kline callback: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("kline_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
+    def _to_v2_symbol(self, symbol: str) -> str:
+        """Конвертация символа из формата v3 (BTCUSDT) в v2 (BTC_USDT)."""
+        if '_' in symbol:
+            return symbol
+        known_quotes = ['USDT', 'USDC', 'BTC', 'ETH']
+        for quote in known_quotes:
+            if symbol.endswith(quote):
+                base = symbol[:-len(quote)]
+                if base:
+                    return f"{base}_{quote}"
+        return symbol
+
     async def _load_historical_data_for_symbol(self, symbol: str):
         """Загрузка исторических данных для символа"""
         try:
@@ -1096,10 +1411,11 @@ class ComprehensiveDataManager:
                 use_dns_cache=True
             )
             
-            # Получаем исторические свечи
+            # Получаем исторические свечи (open API v2 требует формат BTC_USDT)
             try:
                 async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30)) as session:
-                    url = f"https://www.mexc.com/open/api/v2/market/kline?symbol={symbol}&interval=60m&limit=100"
+                    v2_symbol = self._to_v2_symbol(symbol)
+                    url = f"https://www.mexc.com/open/api/v2/market/kline?symbol={v2_symbol}&interval=60m&limit=100"
                     async with session.get(url) as response:
                         if response.status == 200:
                             data = await response.json()
@@ -1125,10 +1441,11 @@ class ComprehensiveDataManager:
             except Exception as e:
                 print(f"Ошибка загрузки свечей для {symbol}: {e}")
             
-            # Получаем 24h данные
+            # Получаем 24h данные (open API v2, символ в формате BTC_USDT)
             try:
                 async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=30)) as session:
-                    url = f"https://www.mexc.com/open/api/v2/market/ticker?symbol={symbol}"
+                    v2_symbol = self._to_v2_symbol(symbol)
+                    url = f"https://www.mexc.com/open/api/v2/market/ticker?symbol={v2_symbol}"
                     async with session.get(url) as response:
                         if response.status == 200:
                             data = await response.json()
@@ -1157,16 +1474,52 @@ class ComprehensiveDataManager:
             # Вычисляем технические индикаторы
             await self._calculate_technical_indicators(symbol, '1h')
             
+            # Записываем данные загрузки исторических данных в файл
+            self._log_data_to_file("historical_data_symbol", {
+                'symbol': symbol,
+                'status': 'loaded',
+                'timestamp': datetime.now().isoformat()
+            })
+            
         except Exception as e:
             print(f"Ошибка загрузки исторических данных для {symbol}: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("historical_data_symbol_error", {
+                'symbol': symbol,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _calculate_technical_indicators(self, symbol: str, interval: str):
         """Вычисление технических индикаторов (асинхронная версия)"""
         try:
             # Просто вызываем синхронную версию
-            return self.get_technical_indicators(symbol, interval)
+            result = self.get_technical_indicators(symbol, interval)
+            
+            # Записываем данные технических индикаторов в файл
+            if result:
+                self._log_data_to_file("technical_indicators", {
+                    'symbol': symbol,
+                    'interval': interval,
+                    'rsi_14': result.get('rsi_14', 0),
+                    'sma_20': result.get('sma_20', 0),
+                    'ema_12': result.get('ema_12', 0),
+                    'timestamp': datetime.now().isoformat()
+                })
+            
+            return result
         except Exception as e:
             print(f"❌ Ошибка вычисления индикаторов для {symbol}: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("technical_indicators_error", {
+                'symbol': symbol,
+                'interval': interval,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             return None
     
     def get_trading_candidates(self, min_volume: float = 10000) -> List[Dict]:
@@ -1187,6 +1540,14 @@ class ComprehensiveDataManager:
         # Сортируем по score
         candidates.sort(key=lambda x: x['score'], reverse=True)
         
+        # Записываем данные кандидатов для торговли в файл
+        self._log_data_to_file("trading_candidates", {
+            'candidates_count': len(candidates[:10]),
+            'min_volume': min_volume,
+            'top_candidates': candidates[:5],  # Топ-5 для логирования
+            'timestamp': datetime.now().isoformat()
+        })
+        
         return candidates[:10]  # Возвращаем топ-10
     
     def _calculate_candidate_score(self, data: MarketData) -> float:
@@ -1200,6 +1561,13 @@ class ComprehensiveDataManager:
             
         except Exception as e:
             print(f"Ошибка вычисления score: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("candidate_score_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             return 0.0
     
     def save_price_to_db(self, symbol: str, price: float, timestamp: int):
@@ -1210,6 +1578,13 @@ class ComprehensiveDataManager:
             
         except Exception as e:
             print(f"Ошибка сохранения цены в БД: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("price_save_error", {
+                'symbol': symbol,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     def save_kline_to_db(self, kline_data: KlineData):
         """Сохранение свечи в базу данных"""
@@ -1219,6 +1594,14 @@ class ComprehensiveDataManager:
             
         except Exception as e:
             print(f"Ошибка сохранения свечи в БД: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("kline_save_error", {
+                'symbol': kline_data.symbol,
+                'interval': kline_data.interval,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     def save_indicators_to_db(self, indicators_data: TechnicalIndicatorsData):
         """Сохранение индикаторов в базу данных"""
@@ -1228,6 +1611,14 @@ class ComprehensiveDataManager:
             
         except Exception as e:
             print(f"Ошибка сохранения индикаторов в БД: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("indicators_save_error", {
+                'symbol': indicators_data.symbol,
+                'interval': '1h',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     def load_historical_prices(self, symbol: str, limit: int = 1000) -> List[Dict]:
         """Загрузка исторических цен из БД"""
@@ -1236,6 +1627,15 @@ class ComprehensiveDataManager:
             return []
         except Exception as e:
             print(f"Ошибка загрузки исторических цен: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("historical_prices_load_error", {
+                'symbol': symbol,
+                'limit': limit,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             return []
     
     def load_historical_klines(self, symbol: str, interval: str = '1h', limit: int = 100) -> List[Dict]:
@@ -1245,6 +1645,16 @@ class ComprehensiveDataManager:
             return []
         except Exception as e:
             print(f"Ошибка загрузки исторических свечей: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("historical_klines_load_error", {
+                'symbol': symbol,
+                'interval': interval,
+                'limit': limit,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             return []
     
     def get_portfolio_summary(self) -> Dict:
@@ -1258,19 +1668,90 @@ class ComprehensiveDataManager:
                     'total_usdt': 0.0,
                     'positions': [],
                     'open_orders': [],
+                    'active_symbols': [],
                     'timestamp': datetime.now().isoformat()
                 }
             
-            return {
-                'total_usdt': account_data.total_usdt,
+            # Получаем актуальные цены для активов
+            portfolio_value = 0.0
+            asset_values = {}
+            
+            for asset, balance in account_data.balances.items():
+                if asset == 'USDT' or asset == 'USDC':
+                    asset_values[asset] = balance
+                    portfolio_value += balance
+                else:
+                    # Конвертируем в USDT
+                    symbol = f"{asset}USDT"
+                    if symbol in self.market_cache:
+                        price = self.market_cache[symbol].price
+                        value = balance * price
+                        asset_values[asset] = value
+                        portfolio_value += value
+                    else:
+                        asset_values[asset] = 0.0
+            
+            # Записываем данные в файл
+            portfolio_data = {
+                'total_usdt': portfolio_value,
+                'balances': account_data.balances,
+                'asset_values': asset_values,
                 'positions': account_data.positions,
                 'open_orders': account_data.open_orders,
+                'active_symbols': self._get_account_symbols(),
                 'timestamp': account_data.timestamp.isoformat()
             }
             
+            self._log_data_to_file("portfolio", portfolio_data)
+            
+            return portfolio_data
+            
         except Exception as e:
             print(f"Ошибка получения сводки портфеля: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("portfolio_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             return {}
+    
+    async def refresh_account_subscriptions(self):
+        """Принудительно обновляет подписки на символы из аккаунта"""
+        try:
+            print("🔄 Принудительное обновление подписок на символы аккаунта...")
+            current_symbols = self._get_account_symbols()
+            
+            # Отписываемся от старых символов (если нужно)
+            if hasattr(self, '_last_account_symbols'):
+                old_symbols = self._last_account_symbols
+                removed_symbols = old_symbols - set(current_symbols)
+                if removed_symbols:
+                    print(f"   📤 Отписываемся от удаленных символов: {', '.join(removed_symbols)}")
+                    # Здесь можно добавить логику отписки от WebSocket
+            
+            # Подписываемся на новые символы
+            await self.subscribe_multiple_symbols(current_symbols)
+            self._last_account_symbols = set(current_symbols)
+            
+            print(f"✅ Подписки обновлены для {len(current_symbols)} символов")
+            
+            # Записываем данные обновления подписок в файл
+            self._log_data_to_file("subscription_refresh", {
+                'symbols_count': len(current_symbols),
+                'symbols': list(current_symbols),
+                'timestamp': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            print(f"❌ Ошибка обновления подписок: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("subscription_refresh_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _add_price_to_correlation_cache(self, symbol: str, price: float):
         """Добавление цены в кэш для корреляций"""
@@ -1285,16 +1766,31 @@ class ComprehensiveDataManager:
             # ПРЯМАЯ ПЕРЕДАЧА В РАСШИРЕННЫЙ CORRELATION_ANALYZER
             timestamp = int(time.time() * 1000)
             advanced_correlation_analyzer.add_price_data(symbol, price, timestamp)
+            
+            # Записываем данные корреляции в файл
+            self._log_data_to_file("correlation_price", {
+                'symbol': symbol,
+                'price': price,
+                'timestamp': datetime.now().isoformat()
+            })
+            
             print(f"✅ Цена {price:.2f} добавлена в расширенный correlation_analyzer для {symbol}")
                 
         except Exception as e:
             print(f"Ошибка сохранения цены для корреляций {symbol}: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("correlation_price_error", {
+                'symbol': symbol,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
 
     async def _fetch_other_assets_data(self):
         """Получение данных других активов через REST API для корреляций"""
         try:
-            # Список активов для корреляционного анализа
-            correlation_assets = ['BTCUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT', 'BNBUSDT', 'MATICUSDT']
+            # Получаем актуальный список символов из аккаунта
+            correlation_assets = self._get_account_symbols()
             
             for asset in correlation_assets:
                 try:
@@ -1325,22 +1821,43 @@ class ComprehensiveDataManager:
                             self.market_cache[asset].price = price
                             self.market_cache[asset].timestamp = datetime.now()
                         
+                        # Записываем данные REST API в файл
+                        self._log_data_to_file("rest_api_price", {
+                            'symbol': asset,
+                            'price': price,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        
                         print(f"📊 REST API: {asset} = ${price:.4f} (для корреляций)")
                         
                 except Exception as e:
                     print(f"Ошибка получения данных для {asset}: {e}")
+                    
+                    # Записываем ошибку в файл
+                    self._log_data_to_file("rest_api_error", {
+                        'symbol': asset,
+                        'error': str(e),
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    
                     continue
                     
         except Exception as e:
             print(f"Ошибка в _fetch_other_assets_data: {e}")
+            
+            # Записываем общую ошибку в файл
+            self._log_data_to_file("fetch_assets_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
 
     async def _load_historical_data_for_correlations(self):
         """Загрузка исторических данных из свечей для корреляционного анализа"""
         try:
             print("📚 Загрузка исторических данных для корреляций...")
             
-            # Список активов для корреляционного анализа
-            correlation_assets = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT', 'BNBUSDT', 'MATICUSDT']
+            # Получаем актуальный список символов из аккаунта
+            correlation_assets = self._get_account_symbols()
             
             for asset in correlation_assets:
                 try:
@@ -1358,6 +1875,14 @@ class ComprehensiveDataManager:
                                 
                                 # Добавляем в расширенный анализатор корреляций
                                 advanced_correlation_analyzer.add_price_data(asset, price, timestamp)
+                                
+                                # Записываем исторические данные в файл
+                                self._log_data_to_file("historical_correlation", {
+                                    'symbol': asset,
+                                    'price': price,
+                                    'timestamp': datetime.fromtimestamp(timestamp / 1000).isoformat()
+                                })
+                                
                                 added_count += 1
                                 
                             except (ValueError, IndexError) as e:
@@ -1399,10 +1924,24 @@ class ComprehensiveDataManager:
             for asset, prices in advanced_correlation_analyzer.price_data.items():
                 print(f"   {asset}: {len(prices)} точек")
             
+            # Записываем данные загрузки исторических данных в файл
+            self._log_data_to_file("historical_data_loaded", {
+                'total_points': total_points,
+                'assets_count': len(correlation_assets),
+                'assets': correlation_assets,
+                'timestamp': datetime.now().isoformat()
+            })
+            
             print("✅ Загрузка исторических данных завершена")
             
         except Exception as e:
             print(f"Ошибка в _load_historical_data_for_correlations: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("historical_correlations_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _add_test_trade_data(self, symbol: str):
         """Добавление тестовых данных сделок для отладки"""
@@ -1437,10 +1976,24 @@ class ComprehensiveDataManager:
                 test_trades.append(trade)
                 self.trade_history_cache[symbol].append(trade)
             
+            # Записываем тестовые сделки в файл
+            self._log_data_to_file("test_trades", {
+                'symbol': symbol,
+                'count': len(test_trades),
+                'timestamp': datetime.now().isoformat()
+            })
+            
             print(f"✅ Добавлено {len(test_trades)} тестовых сделок для {symbol}")
             
         except Exception as e:
             print(f"Ошибка добавления тестовых сделок для {symbol}: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("test_trades_error", {
+                'symbol': symbol,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
     
     async def _ticker_callback(self, ticker_data: Dict):
         """Callback для обновлений тикера"""
@@ -1452,11 +2005,24 @@ class ComprehensiveDataManager:
                 market_data.price = float(ticker_data.get('bid_price', market_data.price))
                 market_data.timestamp = datetime.now()
                 
+                # Записываем данные тикера в файл
+                self._log_data_to_file("ticker", {
+                    'symbol': symbol,
+                    'price': market_data.price,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 # Добавляем в кэш корреляций
                 await self._add_price_to_correlation_cache(symbol, market_data.price)
                 
         except Exception as e:
             print(f"Ошибка в ticker callback: {e}")
+            
+            # Записываем ошибку в файл
+            self._log_data_to_file("ticker_error", {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            })
 
 # Глобальный экземпляр для использования в других модулях
 comprehensive_data_manager = ComprehensiveDataManager() 

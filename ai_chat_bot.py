@@ -24,6 +24,11 @@ class AIChatBot:
         if update.effective_chat.id != self.target_chat_id:
             return
         
+        # Проверяем что сообщение существует и содержит текст
+        if not update.message or not update.message.text:
+            logger.warning("Получено пустое сообщение или сообщение без текста")
+            return
+            
         user_message = update.message.text.strip().lower()
         user_name = update.effective_user.first_name or "Пользователь"
         

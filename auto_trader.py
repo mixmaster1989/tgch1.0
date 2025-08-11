@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Автоматический торговый бот MEXCAITRADE
-Анализ рынка + Perplexity + DeepSeek + Автоторговля
+Анализ рынка + DeepSeek + Автоторговля
 """
 
 import asyncio
@@ -14,7 +14,7 @@ import json
 
 # Импорты компонентов
 from comprehensive_data_manager import ComprehensiveDataManager
-from perplexity_analyzer import PerplexityAnalyzer
+# from perplexity_analyzer import PerplexityAnalyzer  # Убрано - платный сервис
 from mex_api import MexAPI
 from technical_indicators import TechnicalIndicators
 from correlation_analyzer import CorrelationAnalyzer
@@ -28,7 +28,7 @@ class AutoTrader:
     
     def __init__(self):
         self.data_manager = ComprehensiveDataManager()
-        self.perplexity = PerplexityAnalyzer()
+        # self.perplexity = PerplexityAnalyzer()  # Убрано - платный сервис
         self.rest_api = MexAPI()
         self.technical_indicators = TechnicalIndicators()
         self.correlation_analyzer = CorrelationAnalyzer()
@@ -150,14 +150,13 @@ class AutoTrader:
             return {}
     
     async def get_news_analysis(self) -> Dict:
-        """Анализ новостей через Perplexity"""
+        """Анализ новостей (заглушка - Perplexity убран)"""
         try:
-            news_data = await self.perplexity.get_comprehensive_analysis(self.symbol)
-            
+            # Возвращаем заглушку вместо реального анализа
             analysis = {
-                'sentiment': news_data.get('social_sentiment', 'neutral'),
-                'impact_score': news_data.get('impact_score', 0),
-                'recent_news': news_data.get('recent_news', []),
+                'sentiment': 'neutral',
+                'impact_score': 0.0,
+                'recent_news': [],
                 'timestamp': datetime.now()
             }
             

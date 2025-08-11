@@ -20,7 +20,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from openrouter_manager import OpenRouterManager
-from perplexity_analyzer import PerplexityAnalyzer
+# from perplexity_analyzer import PerplexityAnalyzer  # Убрано - платный сервис
 from comprehensive_data_manager import ComprehensiveDataManager
 
 class AITradingAnalyzer:
@@ -28,7 +28,7 @@ class AITradingAnalyzer:
     
     def __init__(self):
         self.openrouter = OpenRouterManager()
-        self.perplexity = PerplexityAnalyzer()
+        # self.perplexity = PerplexityAnalyzer()  # Убрано - платный сервис
         self.data_manager = ComprehensiveDataManager()
         
         # Модели экспертов
@@ -50,7 +50,7 @@ class AITradingAnalyzer:
         # 🔧 РЕЖИМ ЗАГЛУШЕК (для экономии кредитов)
         self.STUBS_MODE = True  # True = заглушки, False = реальные нейронки
     
-    def prepare_data_for_analysis(self, market_data: Dict, perplexity_data: Dict) -> Dict:
+    def prepare_data_for_analysis(self, market_data: Dict, perplexity_data: Dict = None) -> Dict:
         """Подготовить данные для анализа (без повторного запуска)"""
         try:
             # Получаем символ из market_data (может быть объектом или словарем)
@@ -60,6 +60,17 @@ class AITradingAnalyzer:
                 symbol = market_data.get("symbol", "UNKNOWN")
             else:
                 symbol = "UNKNOWN"
+                
+            # Создаем заглушку для новостных данных
+            if perplexity_data is None:
+                perplexity_data = {
+                    'overall_sentiment': 'neutral',
+                    'overall_confidence': 'medium',
+                    'impact_score': 0.0,
+                    'news_analysis': {},
+                    'sentiment_analysis': {},
+                    'technical_analysis': {}
+                }
                 
             return {
                 "symbol": symbol,
@@ -89,7 +100,7 @@ class AITradingAnalyzer:
         - MACD: {getattr(market_data, 'macd', 'N/A')}
         - Тренд: {getattr(market_data, 'trend', 'N/A')}
         
-        НОВОСТНОЙ АНАЛИЗ (Perplexity):
+        НОВОСТНОЙ АНАЛИЗ (заглушка):
         - Общее настроение: {perplexity_data.get('overall_sentiment', 'N/A')}
         - Уверенность: {perplexity_data.get('overall_confidence', 'N/A')}
         - Impact Score: {perplexity_data.get('impact_score', 'N/A')}

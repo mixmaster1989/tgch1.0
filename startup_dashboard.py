@@ -2,12 +2,14 @@ import requests
 from datetime import datetime
 from mex_api import MexAPI
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from portfolio_analyzer import PortfolioAnalyzer
 
 class StartupDashboard:
     def __init__(self):
         self.mex_api = MexAPI()
         self.bot_token = TELEGRAM_BOT_TOKEN
         self.chat_id = TELEGRAM_CHAT_ID
+        self.portfolio_analyzer = PortfolioAnalyzer()
     
     def send_telegram_message(self, message: str):
         """Отправить сообщение в Telegram"""
@@ -104,3 +106,53 @@ class StartupDashboard:
             print(f"Сообщение: {message}")
         
         return result
+    
+    def send_auto_purchase_notification(self):
+        """Отправить уведомление о запуске автоматических покупок"""
+        try:
+            from auto_purchase_config import get_config
+            
+            config = get_config()
+            balance_config = config['balance_monitor']
+            allocation_config = config['allocation']
+            
+            message = "<b>🤖 АВТОМАТИЧЕСКИЕ ПОКУПКИ ЗАПУЩЕНЫ</b>\n"
+            message += "=" * 50 + "\n\n"
+            
+            message += "<b>📊 НАСТРОЙКИ:</b>\n"
+            message += f"💰 Минимальный баланс: ${balance_config['min_balance_threshold']}\n"
+            message += f"💸 Максимальная покупка: ${balance_config['max_purchase_amount']}\n"
+            message += f"⏰ Проверка каждые {balance_config['balance_check_interval']} сек\n"
+            message += f"📈 BTC: {allocation_config['btc_allocation']*100}% | ETH: {allocation_config['eth_allocation']*100}%\n\n"
+            
+            message += "<b>🔒 БЕЗОПАСНОСТЬ:</b>\n"
+            message += f"⏰ Интервал между покупками: {balance_config['min_purchase_interval']} сек\n"
+            message += f"📊 Максимум покупок в день: {balance_config['max_daily_purchases']}\n\n"
+            
+            message += "<b>🔄 СТАТУС:</b>\n"
+            message += "✅ Мониторинг активен\n"
+            message += "✅ Автоматические покупки включены\n"
+            message += "✅ Лимитные ордера с анализом стакана\n"
+            message += "✅ Telegram уведомления активны\n\n"
+            
+            message += "=" * 50 + "\n"
+            message += "<b>🚀 MEXCAITRADE - АВТОМАТИЧЕСКАЯ ТОРГОВЛЯ</b>"
+            
+            result = self.send_telegram_message(message)
+            
+            if result and result.get('ok'):
+                print("✅ Уведомление о автоматических покупках отправлено")
+            else:
+                print("❌ Ошибка отправки уведомления о автоматических покупках")
+                
+        except Exception as e:
+            print(f"❌ Ошибка отправки уведомления о автоматических покупках: {e}")
+    
+    def send_extended_portfolio_report(self):
+        """Отправить расширенный отчет о портфеле с P&L"""
+        try:
+            print("📊 Отправка расширенного отчета о портфеле...")
+            return self.portfolio_analyzer.send_portfolio_report()
+        except Exception as e:
+            print(f"❌ Ошибка отправки расширенного отчета: {e}")
+            return False

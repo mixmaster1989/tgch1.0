@@ -40,3 +40,15 @@ AI_EXPERT_MODELS = {
 
 AI_JUDGE_MODEL = "anthropic/claude-opus-4"
 ANALYSIS_INTERVAL = 300  # seconds
+
+# PnL Monitor Configuration
+PNL_MONITOR_CONFIG = {
+    'profit_threshold': 0.40,  # 40 центов
+    'check_interval': 60,      # Проверка каждую минуту
+    'notification_interval': 300,  # Уведомления каждые 5 минут
+    'trading_pairs': ['BTCUSDC', 'ETHUSDC'],
+    'auto_sell_enabled': True,
+    'telegram_notifications': True,
+    'file_logging': True,
+    'log_file': 'pnl_monitor.log'
+}

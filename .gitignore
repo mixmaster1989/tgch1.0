@@ -1,36 +1,21 @@
-# Environment files
-.env
-.env.local
-.env.production
-
-# Log files
+# Logs
 *.log
-bot.log
-trader.log
-
-# Analysis files
-full_ai_analysis_*.txt
+*.txt
+!requirements.txt
+!README*.txt
+!README*.md
 
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.so
 
-# Build files
-build/
-dist/
-*.spec
-*.exe
+# Portfolio data
+portfolio/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Test results
+test_results.txt
+market_data_log.txt
 
-# OS
-.DS_Store
-Thumbs.db
+# AI analysis files
+full_ai_analysis_*.txt

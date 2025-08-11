@@ -16,6 +16,18 @@ module.exports = {
     out_file: './logs/out.log',
     log_file: './logs/combined.log',
     time: true,
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    // Дополнительные настройки для автоматических покупок
+    kill_timeout: 10000,
+    wait_ready: true,
+    listen_timeout: 10000,
+    // Переменные окружения для автоматических покупок
+    env_production: {
+      AUTO_PURCHASE_ENABLED: 'true',
+      MIN_BALANCE_THRESHOLD: '10.0',
+      MAX_PURCHASE_AMOUNT: '100.0',
+      BTC_ALLOCATION: '0.6',
+      ETH_ALLOCATION: '0.4'
+    }
   }]
 }; 

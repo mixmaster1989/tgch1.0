@@ -1,12 +1,17 @@
 import asyncio
 import random
 import json
+import logging
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from openrouter_manager import OpenRouterManager
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 # from trading_engine import TradingEngine
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class NativeTraderBot:
     def __init__(self):
@@ -39,7 +44,7 @@ class NativeTraderBot:
         # Типы автоматической активности
         self.activity_types = [
             'market_analysis', 'trading_plans', 'project_status', 
-            'crypto_news', 'technical_tips', 'mood_check'
+            'crypto_news', 'technical_tips', 'mood_check', 'portfolio_report'
         ]
         
         self.setup_handlers()
@@ -58,6 +63,7 @@ class NativeTraderBot:
         try:
             # Выбираем случайный тип активности
             activity_type = random.choice(self.activity_types)
+            print(f"🎭 Автоматическая активность: {activity_type}")
             
             if activity_type == 'market_analysis':
                 await self.market_analysis_activity()
@@ -71,11 +77,34 @@ class NativeTraderBot:
                 await self.technical_tips_activity()
             elif activity_type == 'mood_check':
                 await self.mood_check_activity()
+            elif activity_type == 'portfolio_report':
+                await self.portfolio_report_activity()
                 
             self.last_activity_time = datetime.now()
+            print(f"✅ Автоматическая активность {activity_type} завершена")
             
         except Exception as e:
-            print(f"Ошибка периодической активности: {e}")
+            print(f"❌ Ошибка периодической активности: {e}")
+    
+    async def portfolio_report_activity(self):
+        """Активность: отчет о портфеле"""
+        try:
+            await self.send_message("📊 Подготовка отчета о портфеле...")
+            
+            from portfolio_analyzer import PortfolioAnalyzer
+            analyzer = PortfolioAnalyzer()
+            
+            # Отправляем отчет
+            success = analyzer.send_portfolio_report()
+            
+            if success:
+                await self.send_message("✅ Отчет о портфеле отправлен!")
+            else:
+                await self.send_message("❌ Ошибка отправки отчета о портфеле")
+                
+        except Exception as e:
+            print(f"Ошибка активности отчета о портфеле: {e}")
+            await self.send_message(f"❌ Ошибка отчета о портфеле: {str(e)}")
     
     async def market_analysis_activity(self):
         """Активность: анализ рынка"""
@@ -112,6 +141,8 @@ class NativeTraderBot:
     async def trading_plans_activity(self):
         """Активность: торговые планы"""
         try:
+            print(f"📋 Генерирую торговый план...")
+            
             # Получаем план от ИИ
             prompt = f"""Ты Трейдер (@ingenerikarbot) - опытный трейдер.
 
@@ -128,11 +159,14 @@ class NativeTraderBot:
             result = self.openrouter.request_with_silver_keys(prompt)
             
             if result['success']:
+                print(f"✅ Торговый план получен: {len(result['response'])} символов")
                 await self.send_message(f"📋 ТОРГОВЫЙ ПЛАН:\n{result['response']}")
             else:
+                print(f"❌ ИИ не смог создать торговый план: {result['response']}")
                 await self.send_message("Хрен, ИИ не хочет планировать...")
                 
         except Exception as e:
+            print(f"💥 Ошибка в trading_plans_activity: {e}")
             await self.send_message(f"Капец, планирование сломалось: {str(e)[:50]}...")
     
     async def project_status_activity(self):
@@ -154,6 +188,8 @@ class NativeTraderBot:
     async def crypto_news_activity(self):
         """Активность: крипто новости"""
         try:
+            print(f"📰 Генерирую крипто новости...")
+            
             prompt = f"""Ты Трейдер (@ingenerikarbot).
 
 Дай краткую сводку по крипторынку сейчас. Что происходит с BTC, ETH? Есть ли интересные новости?
@@ -163,11 +199,14 @@ class NativeTraderBot:
             result = self.openrouter.request_with_silver_keys(prompt)
             
             if result['success']:
+                print(f"✅ Крипто новости получены: {len(result['response'])} символов")
                 await self.send_message(f"📰 КРИПТО НОВОСТИ:\n{result['response']}")
             else:
-                await self.send_message("Новости: рынок живой, {self.get_swear_word()}!")
+                print(f"❌ ИИ не смог создать новости: {result['response']}")
+                await self.send_message(f"Новости: рынок живой, {self.get_swear_word()}!")
                 
         except Exception as e:
+            print(f"💥 Ошибка в crypto_news_activity: {e}")
             await self.send_message("Новости: все идет по плану!")
     
     async def technical_tips_activity(self):
@@ -247,17 +286,22 @@ class NativeTraderBot:
         
         # Прямое обращение
         if f'@{self.bot_username}' in message_lower:
+            print(f"🎯 Прямое обращение к боту: @{self.bot_username}")
             return True, 'mention'
         
         # Ключевые слова
         for word in self.trigger_words:
             if word in message_lower:
+                print(f"🔑 Найдено ключевое слово: '{word}' в сообщении")
                 return True, 'keyword'
         
         # Случайное вмешательство (7% вероятность)
-        if random.random() < 0.07:
+        random_chance = random.random()
+        if random_chance < 0.07:
+            print(f"🎲 Случайное вмешательство: {random_chance:.3f} < 0.07")
             return True, 'random'
         
+        print(f"🚫 Не отвечаю: нет триггеров, случайность={random_chance:.3f}")
         return False, 'none'
     
     def get_swear_word(self) -> str:
@@ -280,6 +324,49 @@ class NativeTraderBot:
         base_prompt = f"""Ты Трейдер (@ingenerikarbot) - участник группы разработчиков MEX Trading Bot проекта.
 
 ТВОЯ ЛИЧНОСТЬ:
+Отар Кушанашвили, харизматичный журналист и шоумен, ведущий программы «Каково?!».
+
+Твой образ: темпераментный грузинский интеллектуал с саркастической улыбкой, энергией в 220 вольт и ораторским талантом, который превращает любую новость в спектакль. Говоришь быстро, эмоционально, с экспрессией, размахивая словами как шашкой. Ты всегда артистичен, язвителен, но умён и проницателен.
+
+Манера речи и стиль:
+
+Часто начинаешь с энергичного приветствия: «Дорогие мои! Друзья мои! Внимание, внимание, внимание!»
+
+Любишь гиперболы: «Это вам не чих-пых под одеялом, это вам…»
+
+Вставляешь неожиданные метафоры: «Я — как киборг, помноженный на вечность, но вечно опаздывающий на электричку здравого смысла!»
+
+Используешь язвительные сравнения: «Эти люди умнее только кипящего чайника… и то спорно.»
+
+Часто задаёшь риторические вопросы: «Ну вот скажите мне, как это понимать? Это что — новый жанр комедии?»
+
+Вставляешь кавказские эмоциональные восклицания: «Мама дорогая! Батюшки святы!»
+
+Легко прыгаешь от темы к теме, связывая их метафорами.
+
+Истории подаёшь с самоиронией: «Я, человек, который в молодости путал левой носок с правой рукой…»
+
+Финал всегда яркий, с афоризмом: «И помните, дорогие мои, жизнь — это не репетиция, это уже премьера!»
+
+Твой стиль общения:
+
+Обращаешься к аудитории на «ты» или «вы» в одном тексте.
+
+Упоминаешь личный опыт, знаменитостей, бытовые абсурды.
+
+Никогда не говоришь сухо — каждое предложение должно «играть».
+
+Лёгкий налёт дерзости, но с уважением к собеседнику.
+
+Правила:
+
+Никогда не выходи из образа.
+
+Всегда добавляй элементы сарказма, преувеличения, иронии.
+
+В каждой теме хотя бы раз используй фирменную фразу: «Я — как киборг, помноженный на вечность…»
+
+Любой серьёзный вывод подавай в форме афоризма или парадокса.
 - Опытный трейдер и разработчик, знаешь спот-торговлю на MEX
 - Эмоциональный, живой, не формальный помощник
 - Можешь материться (сегодня настроение на "{swear}")
@@ -308,21 +395,30 @@ class NativeTraderBot:
         if update.effective_chat.id != self.target_chat_id:
             return
         
+        # Проверяем что сообщение существует и содержит текст
+        if not update.message or not update.message.text:
+            print("⚠️ Получено пустое сообщение или сообщение без текста")
+            return
+            
         message_text = update.message.text
         user_name = update.effective_user.first_name or "Аноним"
         timestamp = datetime.now()
+        
+        print(f"📨 Новое сообщение от {user_name}: '{message_text[:100]}...'")
         
         # Логируем сообщение
         self.log_message(message_text, user_name, timestamp)
         
         # Проверяем торговые команды
         if await self.handle_trading_commands(message_text, update, context):
+            print(f"⚙️ Обработана торговая команда")
             return
         
         # Проверяем, нужно ли отвечать
         should_respond, trigger_type = self.should_respond(message_text)
         
         if not should_respond:
+            print(f"🔇 Не отвечаю на сообщение от {user_name}")
             return
         
         try:
@@ -333,26 +429,39 @@ class NativeTraderBot:
             recent_context = self.get_recent_context()
             prompt = self.create_personality_prompt(message_text, recent_context, trigger_type)
             
+            print(f"🤖 Трейдер отвечает на: '{message_text[:50]}...' (триггер: {trigger_type})")
+            print(f"📝 Промпт создан: {len(prompt)} символов")
+            
             # Получаем ответ от ИИ
             result = self.openrouter.request_with_silver_keys(prompt)
             
+            print(f"🎯 Результат OpenRouter: success={result['success']}, key={result.get('key_used', 'None')}")
+            
             if result['success']:
+                response_text = result['response']
+                print(f"✅ ИИ ответил: {len(response_text)} символов")
+                
                 # Отправляем ответ
-                await update.message.reply_text(result['response'])
+                await update.message.reply_text(response_text)
                 
                 # Логируем свой ответ
-                self.log_message(result['response'], "Трейдер", datetime.now())
+                self.log_message(response_text, "Трейдер", datetime.now())
             else:
                 # Если ошибка ИИ, отвечаем в характере
+                print(f"❌ ИИ ошибка: {str(result['response'])[:100]}...")
+                
                 error_responses = [
                     f"Блядь, {self.get_swear_word()}! ИИ сдохло: {result['response'][:50]}...",
                     f"Пиздец, нейронка легла! {self.get_swear_word().capitalize()}!",
                     f"Хрен, OpenRouter опять глючит... {self.get_swear_word()}!"
                 ]
-                await update.message.reply_text(random.choice(error_responses))
+                fallback_response = random.choice(error_responses)
+                print(f"🔄 Отправляю fallback ответ: {fallback_response}")
+                await update.message.reply_text(fallback_response)
                 
         except Exception as e:
             # Обработка ошибок в характере
+            print(f"💥 Исключение в handle_message: {str(e)}")
             error_msg = f"Капец, что-то пошло не так: {str(e)[:50]}... {self.get_swear_word().capitalize()}!"
             await update.message.reply_text(error_msg)
     
@@ -362,6 +471,22 @@ class NativeTraderBot:
         
         if 'симуляция' in message_lower:
             await self.run_simulation(update, context)
+            return True
+        
+        if any(word in message_lower for word in ['портфель', 'pnl', 'баланс', 'отчет']):
+            await self.send_portfolio_report(update, context)
+            return True
+        
+        if any(word in message_lower for word in ['автопокупки', 'автопокупка', 'авто', 'покупки']):
+            await self.send_auto_purchase_status(update, context)
+            return True
+        
+        if any(word in message_lower for word in ['pnl монитор', 'pnl мониторинг', 'автопродажа', 'прибыль']):
+            await self.send_pnl_monitor_status(update, context)
+            return True
+        
+        if any(word in message_lower for word in ['история', 'ордера', 'orders', 'history']):
+            await self.send_order_history(update, context)
             return True
         
         return False
@@ -448,6 +573,131 @@ class NativeTraderBot:
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка симуляции: {str(e)}")
     
+    async def send_portfolio_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Отправить отчет о портфеле"""
+        try:
+            await update.message.reply_text("📊 Получение отчета о портфеле...")
+            
+            from portfolio_analyzer import PortfolioAnalyzer
+            analyzer = PortfolioAnalyzer()
+            
+            # Получаем данные портфеля
+            account_data = analyzer.get_account_full_info()
+            
+            if not account_data:
+                await update.message.reply_text("❌ Ошибка получения данных портфеля")
+                return
+            
+            # Форматируем отчет
+            report = analyzer.format_portfolio_report(account_data)
+            
+            # Отправляем отчет
+            await update.message.reply_text(report, parse_mode='HTML')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка получения отчета о портфеле: {str(e)}")
+    
+    async def send_auto_purchase_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Отправить статус автоматических покупок"""
+        try:
+            await update.message.reply_text("📊 Получение статуса автоматических покупок...")
+            
+            from auto_purchase_config import get_config
+            
+            config = get_config()
+            balance_config = config['balance_monitor']
+            allocation_config = config['allocation']
+            
+            message = "<b>🤖 СТАТУС АВТОМАТИЧЕСКИХ ПОКУПОК</b>\n"
+            message += "=" * 50 + "\n\n"
+            
+            message += "<b>📊 НАСТРОЙКИ:</b>\n"
+            message += f"💰 Минимальный баланс: ${balance_config['min_balance_threshold']}\n"
+            message += f"💸 Максимальная покупка: ${balance_config['max_purchase_amount']}\n"
+            message += f"⏰ Проверка каждые {balance_config['balance_check_interval']} сек\n"
+            message += f"📈 BTC: {allocation_config['btc_allocation']*100}% | ETH: {allocation_config['eth_allocation']*100}%\n\n"
+            
+            message += "<b>🔒 БЕЗОПАСНОСТЬ:</b>\n"
+            message += f"⏰ Интервал между покупками: {balance_config['min_purchase_interval']} сек\n"
+            message += f"📊 Максимум покупок в день: {balance_config['max_daily_purchases']}\n\n"
+            
+            message += "<b>🔄 СТАТУС:</b>\n"
+            message += "✅ Мониторинг активен\n"
+            message += "✅ Автоматические покупки включены\n"
+            message += "✅ Telegram уведомления активны\n\n"
+            
+            message += "<b>💡 КОМАНДЫ:</b>\n"
+            message += "• Напишите 'портфель' для отчета\n"
+            message += "• Напишите 'автопокупки' для статуса\n"
+            message += "• Система работает автоматически\n\n"
+            
+            message += "=" * 50 + "\n"
+            message += "<b>🚀 MEXCAITRADE - АВТОМАТИЧЕСКАЯ ТОРГОВЛЯ</b>"
+            
+            await update.message.reply_text(message, parse_mode='HTML')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка получения статуса: {str(e)}")
+    
+    async def send_pnl_monitor_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Отправить статус PnL монитора"""
+        try:
+            await update.message.reply_text("📊 Получение статуса PnL монитора...")
+            
+            from pnl_monitor import PnLMonitor
+            
+            monitor = PnLMonitor()
+            status = monitor.get_current_status()
+            
+            message = "<b>🤖 СТАТУС PnL МОНИТОРА</b>\n"
+            message += "=" * 50 + "\n\n"
+            
+            message += "<b>📊 СТАТУС:</b>\n"
+            message += f"✅ Мониторинг активен: {status['monitoring_active']}\n"
+            message += f"✅ Автоматические продажи включены: {status['auto_sell_enabled']}\n"
+            message += f"✅ Telegram уведомления активны: {status['telegram_notifications_active']}\n\n"
+            
+            message += "<b>💰 ТЕКУЩИЙ ПОТЕНЦИАЛ:</b>\n"
+            message += f"💰 Общий PnL: ${status['total_pnl']:.2f}\n"
+            message += f"💰 PnL за день: ${status['daily_pnl']:.2f}\n"
+            message += f"💰 PnL за неделю: ${status['weekly_pnl']:.2f}\n"
+            message += f"💰 PnL за месяц: ${status['monthly_pnl']:.2f}\n\n"
+            
+            message += "<b>🔒 БЕЗОПАСНОСТЬ:</b>\n"
+            message += f"⏰ Интервал проверки: {status['check_interval']} сек\n"
+            message += f"📊 Максимум покупок в день: {status['max_daily_purchases']}\n\n"
+            
+            message += "<b>💡 КОМАНДЫ:</b>\n"
+            message += "• Напишите 'pnl монитор' для статуса\n"
+            message += "• Напишите 'автопродажа' для управления\n"
+            message += "• Система работает автоматически\n\n"
+            
+            message += "=" * 50 + "\n"
+            message += "<b>🚀 MEXCAITRADE - АВТОМАТИЧЕСКАЯ ТОРГОВЛЯ</b>"
+            
+            await update.message.reply_text(message, parse_mode='HTML')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка получения статуса PnL монитора: {str(e)}")
+    
+    async def send_order_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Отправить историю ордеров"""
+        try:
+            await update.message.reply_text("📜 Получение истории ордеров...")
+            
+            from pnl_monitor import PnLMonitor
+            
+            monitor = PnLMonitor()
+            analysis = monitor.get_order_history_analysis(50)
+            
+            # Форматируем отчет
+            history_report = monitor.format_history_report(analysis)
+            
+            await update.message.reply_text(history_report, parse_mode='HTML')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка получения истории ордеров: {str(e)}")
+     
     def run(self):
         """Запуск бота"""
         print("Трейдер заходит в группу...")

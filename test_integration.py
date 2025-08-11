@@ -1,73 +1,167 @@
 #!/usr/bin/env python3
 """
-Тест интеграции БД в comprehensive_data_manager
+Тест интеграции всех компонентов бота
 """
 
-import asyncio
-import time
-from comprehensive_data_manager import ComprehensiveDataManager
+import logging
+import sys
+from datetime import datetime
 
-async def test_integration():
-    """Тест интеграции БД"""
-    print("🧪 Тест интеграции БД в comprehensive_data_manager...")
-    
-    # Создаем менеджер
-    manager = ComprehensiveDataManager()
-    
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def test_imports():
+    """Тест импорта всех модулей"""
     try:
-        # Запускаем менеджер
-        await manager.start()
+        logger.info("🔍 Тестирование импортов...")
         
-        # Подписываемся на символы в WebSocket
-        await manager.subscribe_multiple_symbols(['BTCUSDT', 'ETHUSDT'])
+        # Тест основных модулей
+        from mex_api import MexAPI
+        logger.info("✅ MexAPI импортирован")
         
-        # Ждем немного чтобы WebSocket подключился
-        await asyncio.sleep(5)
+        from balance_monitor import BalanceMonitor
+        logger.info("✅ BalanceMonitor импортирован")
         
-        print("⏳ Собираем данные 60 секунд...")
-        await asyncio.sleep(60)
+        from pnl_monitor import PnLMonitor
+        logger.info("✅ PnLMonitor импортирован")
         
-        # Проверяем что данные сохраняются в БД
-        print("📊 Проверяем сохранение данных в БД...")
+        from native_trader_bot import NativeTraderBot
+        logger.info("✅ NativeTraderBot импортирован")
         
-        # Загружаем исторические цены
-        btc_prices = manager.load_historical_prices('BTCUSDT', 10)
-        eth_prices = manager.load_historical_prices('ETHUSDT', 10)
+        from config import PNL_MONITOR_CONFIG
+        logger.info("✅ Конфигурация PnL импортирована")
         
-        print(f"💰 BTC цены в БД: {len(btc_prices)} записей")
-        print(f"💰 ETH цены в БД: {len(eth_prices)} записей")
+        from auto_purchase_config import get_config
+        logger.info("✅ Конфигурация автопокупок импортирована")
         
-        # Загружаем исторические свечи
-        btc_klines = manager.load_historical_klines('BTCUSDT', '1h', 10)
-        eth_klines = manager.load_historical_klines('ETHUSDT', '1h', 10)
-        
-        print(f"📈 BTC свечи в БД: {len(btc_klines)} записей")
-        print(f"📈 ETH свечи в БД: {len(eth_klines)} записей")
-        
-        # Проверяем кэш
-        print("⚡ Проверяем Redis кэш...")
-        btc_cached_price = manager.redis_cache.get_price('BTCUSDT')
-        eth_cached_price = manager.redis_cache.get_price('ETHUSDT')
-        
-        print(f"💰 BTC цена в кэше: {btc_cached_price}")
-        print(f"💰 ETH цена в кэше: {eth_cached_price}")
-        
-        # Получаем текущие данные
-        market_data = manager.get_market_data()
-        print(f"📊 Текущие рыночные данные: {len(market_data)} символов")
-        
-        # Получаем кандидатов для торговли
-        candidates = manager.get_trading_candidates()
-        print(f"🎯 Кандидаты для торговли: {len(candidates)} символов")
-        
-        print("✅ Тест интеграции завершен успешно!")
+        return True
         
     except Exception as e:
-        print(f"❌ Ошибка в тесте: {e}")
+        logger.error(f"❌ Ошибка импорта: {e}")
+        return False
+
+def test_api_connection():
+    """Тест подключения к API"""
+    try:
+        logger.info("🔍 Тестирование подключения к API...")
         
-    finally:
-        # Останавливаем менеджер
-        await manager.stop()
+        from mex_api import MexAPI
+        api = MexAPI()
+        
+        # Тест получения балансов
+        account_info = api.get_account_info()
+        if 'balances' in account_info:
+            logger.info(f"✅ API подключение успешно, найдено {len(account_info['balances'])} балансов")
+            return True
+        else:
+            logger.error("❌ Не удалось получить балансы")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка подключения к API: {e}")
+        return False
+
+def test_pnl_monitor():
+    """Тест PnL монитора"""
+    try:
+        logger.info("🔍 Тестирование PnL монитора...")
+        
+        from pnl_monitor import PnLMonitor
+        monitor = PnLMonitor()
+        
+        # Тест получения статуса
+        status = monitor.get_current_status()
+        logger.info(f"✅ PnL монитор работает, общий PnL: ${status['total_pnl']:.4f}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка PnL монитора: {e}")
+        return False
+
+def test_balance_monitor():
+    """Тест монитора баланса"""
+    try:
+        logger.info("🔍 Тестирование монитора баланса...")
+        
+        from balance_monitor import BalanceMonitor
+        monitor = BalanceMonitor()
+        
+        # Тест получения баланса USDT
+        usdt_balance = monitor.get_usdt_balance()
+        logger.info(f"✅ Монитор баланса работает, USDT: ${usdt_balance:.2f}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка монитора баланса: {e}")
+        return False
+
+def test_configurations():
+    """Тест конфигураций"""
+    try:
+        logger.info("🔍 Тестирование конфигураций...")
+        
+        from config import PNL_MONITOR_CONFIG
+        from auto_purchase_config import get_config
+        
+        # Тест PnL конфигурации
+        logger.info(f"✅ PnL порог: ${PNL_MONITOR_CONFIG['profit_threshold']}")
+        logger.info(f"✅ PnL интервал: {PNL_MONITOR_CONFIG['check_interval']} сек")
+        
+        # Тест автопокупок конфигурации
+        auto_config = get_config()
+        balance_config = auto_config['balance_monitor']
+        logger.info(f"✅ Автопокупки порог: ${balance_config['min_balance_threshold']}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка конфигураций: {e}")
+        return False
+
+def main():
+    """Главная функция тестирования"""
+    logger.info("🚀 ТЕСТ ИНТЕГРАЦИИ MEXCAITRADE")
+    logger.info("=" * 60)
+    logger.info(f"Время тестирования: {datetime.now()}")
+    
+    tests = [
+        ("Импорты модулей", test_imports),
+        ("Подключение к API", test_api_connection),
+        ("PnL монитор", test_pnl_monitor),
+        ("Монитор баланса", test_balance_monitor),
+        ("Конфигурации", test_configurations),
+    ]
+    
+    passed = 0
+    total = len(tests)
+    
+    for test_name, test_func in tests:
+        logger.info(f"\n🔍 {test_name}...")
+        if test_func():
+            passed += 1
+            logger.info(f"✅ {test_name} - ПРОЙДЕН")
+        else:
+            logger.error(f"❌ {test_name} - ПРОВАЛЕН")
+    
+    logger.info("\n" + "=" * 60)
+    logger.info(f"📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:")
+    logger.info(f"✅ Пройдено: {passed}/{total}")
+    logger.info(f"❌ Провалено: {total - passed}/{total}")
+    
+    if passed == total:
+        logger.info("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ! Система готова к запуску.")
+        logger.info("🚀 Запустите: python3 main.py")
+        return True
+    else:
+        logger.error("⚠️ НЕКОТОРЫЕ ТЕСТЫ ПРОВАЛЕНЫ! Проверьте настройки.")
+        return False
 
 if __name__ == "__main__":
-    asyncio.run(test_integration()) 
+    success = main()
+    sys.exit(0 if success else 1) 
