@@ -15,6 +15,7 @@ from auto_purchase_config import get_config
 from config import PNL_MONITOR_CONFIG
 from alt_monitor import AltsMonitor
 from stablecoin_balancer import StablecoinBalancer
+from auto_trading_cycle import AutoTradingCycle
 
 # Настройка логирования
 logging.basicConfig(
@@ -138,11 +139,24 @@ def main():
         except Exception as e:
             logger.error(f"❌ Ошибка запуска балансировщика стейблов: {e}")
 
+        # Запускаем автоматический торговый цикл по скану рынка
+        try:
+            logger.info("🚀 Запуск автоматического торгового цикла...")
+            auto_trader = AutoTradingCycle(simulation_mode=True)  # Симуляция по умолчанию
+            def run_auto_trading():
+                asyncio.run(auto_trader.start_auto_trading())
+            t = threading.Thread(target=run_auto_trading, daemon=True)
+            t.start()
+            logger.info("✅ Автоматический торговый цикл запущен в отдельном потоке")
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска автоматического торгового цикла: {e}")
+
         logger.info("✅ Все компоненты запущены:")
         logger.info("   📈 Автоматические покупки BTC/ETH")
         logger.info("   📊 PnL мониторинг с автопродажей")
         logger.info("   🧩 Мониторинг альтов (порог $0.20)")
         logger.info("   ⚖️ Балансировщик USDT/USDC (каждый час)")
+        logger.info("   🔄 Автоматический торговый цикл (каждые 5 минут)")
         logger.info("   🤖 Telegram бот")
         
         # Запускаем нативного Трейдера
