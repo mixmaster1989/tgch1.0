@@ -1,43 +1,57 @@
 #!/usr/bin/env python3
 """
-Запуск автоматического торгового бота
+Запуск автоматической торговли по скану рынка
 """
 
-import asyncio
-import logging
-from datetime import datetime
+import sys
+import os
+from auto_trading_cycle import AutoTradingCycle
 
-from auto_trader import AutoTrader
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-async def main():
-    """Главная функция"""
-    logger.info("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ТОРГОВОГО БОТА")
-    logger.info("=" * 60)
-    logger.info(f"Время запуска: {datetime.now()}")
+def main():
+    """Главная функция запуска"""
+    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОЙ ТОРГОВЛИ ПО СКАНУ РЫНКА")
+    print("=" * 70)
     
-    trader = AutoTrader()
+    # Проверяем аргументы командной строки
+    simulation_mode = True  # По умолчанию симуляция
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "real":
+            simulation_mode = False
+            print("⚠️ РЕЖИМ РЕАЛЬНОЙ ТОРГОВЛИ!")
+            print("⚠️ БУДУТ ТРАТИТЬСЯ РЕАЛЬНЫЕ ДЕНЬГИ!")
+            confirm = input("Подтвердите запуск реальной торговли (yes/no): ")
+            if confirm.lower() != 'yes':
+                print("❌ Запуск отменен")
+                return
+        elif sys.argv[1] == "simulation":
+            simulation_mode = True
+            print("🎮 РЕЖИМ СИМУЛЯЦИИ - деньги не тратятся")
+        else:
+            print("Использование:")
+            print("  python3 run_auto_trader.py simulation  # Симуляция (по умолчанию)")
+            print("  python3 run_auto_trader.py real        # Реальная торговля")
+            return
+    
+    print(f"📊 Режим: {'СИМУЛЯЦИЯ' if simulation_mode else 'РЕАЛЬНАЯ ТОРГОВЛЯ'}")
+    print("⏰ Интервал циклов: 5 минут")
+    print("🎯 Автоматические покупки по найденным возможностям")
+    print("=" * 70)
     
     try:
-        # Запускаем бота
-        await trader.start()
+        # Создаем автоматический торговый цикл
+        auto_trader = AutoTradingCycle(simulation_mode=simulation_mode)
+        
+        # Запускаем торговлю
+        import asyncio
+        asyncio.run(auto_trader.start_auto_trading())
         
     except KeyboardInterrupt:
-        logger.info("🛑 Получен сигнал остановки (Ctrl+C)")
-        await trader.stop()
-        
+        print("\n🛑 Остановка пользователем")
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}")
-        await trader.stop()
-        
-    finally:
-        logger.info("✅ Бот завершен")
+        print(f"\n❌ Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 
