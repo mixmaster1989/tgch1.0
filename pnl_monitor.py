@@ -11,6 +11,7 @@ from datetime import datetime
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, PNL_MONITOR_CONFIG
 from portfolio_balancer import PortfolioBalancer
 from mexc_advanced_api import MexAdvancedAPI
+from post_sale_balancer import PostSaleBalancer
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -745,6 +746,14 @@ class PnLMonitor:
                     f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                 )
                 self.send_telegram_message(message)
+                
+                # Триггер пост-продажного балансировщика 50/50
+                try:
+                    balancer = PostSaleBalancer()
+                    balance_result = balancer.rebalance_on_freed_funds()
+                    logger.info(f"⚖️ PostSaleBalancer: {balance_result}")
+                except Exception as e:
+                    logger.error(f"Ошибка PostSaleBalancer: {e}")
                 
                 return order
             else:

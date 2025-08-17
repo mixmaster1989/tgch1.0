@@ -14,7 +14,7 @@ from pnl_monitor import PnLMonitor
 from auto_purchase_config import get_config
 from config import PNL_MONITOR_CONFIG
 from alt_monitor import AltsMonitor
-from stablecoin_balancer import StablecoinBalancer
+# from stablecoin_balancer import StablecoinBalancer
 from market_scanner import MarketScanner
 
 # Настройка логирования
@@ -155,24 +155,24 @@ def main():
         except Exception as e:
             logger.error(f"❌ Ошибка запуска монитора альтов: {e}")
         
-        # Запускаем балансировщик стейблкоинов
-        try:
-            logger.info("🚀 Запуск балансировщика USDT/USDC...")
-            stablecoin_balancer = StablecoinBalancer()
-            def run_stablecoin_balancer():
-                stablecoin_balancer.start_monitoring()
-            t = threading.Thread(target=run_stablecoin_balancer, daemon=True)
-            t.start()
-            logger.info("✅ Балансировщик стейблов запущен в отдельном потоке")
-        except Exception as e:
-            logger.error(f"❌ Ошибка запуска балансировщика стейблов: {e}")
+        # (Отключено) Запуск балансировщика стейблкоинов
+        # try:
+        #     logger.info("🚀 Запуск балансировщика USDT/USDC...")
+        #     stablecoin_balancer = StablecoinBalancer()
+        #     def run_stablecoin_balancer():
+        #         stablecoin_balancer.start_monitoring()
+        #     t = threading.Thread(target=run_stablecoin_balancer, daemon=True)
+        #     t.start()
+        #     logger.info("✅ Балансировщик стейблов запущен в отдельном потоке")
+        # except Exception as e:
+        #     logger.error(f"❌ Ошибка запуска балансировщика стейблов: {e}")
 
         logger.info("✅ Все компоненты запущены:")
         logger.info("   🔍 Сканер рынка с автопокупками")
         logger.info("   📈 Автоматические покупки BTC/ETH")
         logger.info("   📊 PnL мониторинг с автопродажей")
         logger.info("   🧩 Мониторинг альтов (порог $0.15)")
-        logger.info("   ⚖️ Балансировщик USDT/USDC (каждый час)")
+        # logger.info("   ⚖️ Балансировщик USDT/USDC (каждый час)")
         logger.info("   🤖 Telegram бот")
         
         # Запускаем нативного Трейдера

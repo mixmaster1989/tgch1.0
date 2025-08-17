@@ -15,6 +15,7 @@ from mex_api import MexAPI
 from mexc_advanced_api import MexAdvancedAPI
 from pnl_monitor import PnLMonitor
 from anti_hype_filter import AntiHypeFilter
+from post_sale_balancer import PostSaleBalancer
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -234,6 +235,14 @@ class AltsMonitor:
                         f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                     )
                     PnLMonitor().send_telegram_message(sell_message)
+                    
+                    # Триггер пост-продажного балансировщика 50/50
+                    try:
+                        balancer = PostSaleBalancer()
+                        balance_result = balancer.rebalance_on_freed_funds()
+                        logger.info(f"⚖️ PostSaleBalancer: {balance_result}")
+                    except Exception as e:
+                        logger.error(f"Ошибка PostSaleBalancer: {e}")
                 
                 time.sleep(0.5)
         # BUY phase с анти-хайп фильтром
