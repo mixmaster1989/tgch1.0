@@ -175,6 +175,13 @@ class PostSaleBalancer:
 						)
 						self._send_telegram_message(msg)
 					return result
+				msg = (
+					"⚖️ <b>Балансировка 50/50</b>\n\n"
+					f"Нет свободного USDT для выравнивания\n"
+					f"Портфель: Альты=${alts_value_usdt:.2f} | BTC/ETH=${btceth_value_usdt:.2f} | Цель на сторону=${target_each:.2f}\n"
+					f"Свободные: USDT=${free_usdt:.2f} | USDC=${free_usdc:.2f}"
+				)
+				self._send_telegram_message(msg)
 				return {'success': False, 'action': 'noop', 'reason': 'no_free_usdt'}
 
 			if btceth_value_usdt > target_each:
@@ -196,8 +203,22 @@ class PostSaleBalancer:
 						)
 						self._send_telegram_message(msg)
 					return result
+				msg = (
+					"⚖️ <b>Балансировка 50/50</b>\n\n"
+					f"Нет свободного USDC для выравнивания\n"
+					f"Портфель: Альты=${alts_value_usdt:.2f} | BTC/ETH=${btceth_value_usdt:.2f} | Цель на сторону=${target_each:.2f}\n"
+					f"Свободные: USDT=${free_usdt:.2f} | USDC=${free_usdc:.2f}"
+				)
+				self._send_telegram_message(msg)
 				return {'success': False, 'action': 'noop', 'reason': 'no_free_usdc'}
 
+			msg = (
+				"⚖️ <b>Балансировка 50/50</b>\n\n"
+				f"Уже сбалансировано (50/50)\n"
+				f"Портфель: Альты=${alts_value_usdt:.2f} | BTC/ETH=${btceth_value_usdt:.2f} | Цель на сторону=${target_each:.2f}\n"
+				f"Свободные: USDT=${free_usdt:.2f} | USDC=${free_usdc:.2f}"
+			)
+			self._send_telegram_message(msg)
 			return {'success': True, 'action': 'balanced', 'reason': 'already_50_50'}
 		except Exception as e:
 			logger.error(f"Ошибка балансировки 50/50: {e}")
