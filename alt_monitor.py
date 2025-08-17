@@ -160,13 +160,35 @@ class AltsMonitor:
         if not alt_items:
             return
         
-        # Получаем общую стоимость альтов
+        # Стоимость альтов
         total_alts_value = sum(it['quantity'] * it['current_price'] for it in alt_items)
         total_pnl = sum(it['pnl'] for it in alt_items)
         
+        # Общая стоимость (включая USDT/USDC)
+        try:
+            account_info = self.mex.get_account_info() or {}
+            total_portfolio = 0.0
+            for b in account_info.get('balances', []) or []:
+                asset = b.get('asset')
+                total = float(b.get('free', 0) or 0) + float(b.get('locked', 0) or 0)
+                if total <= 0:
+                    continue
+                if asset in {'USDT', 'USDC'}:
+                    total_portfolio += total
+                else:
+                    try:
+                        px = self.mex.get_ticker_price(f"{asset}USDT")
+                        if px and 'price' in px:
+                            total_portfolio += total * float(px['price'])
+                    except Exception:
+                        pass
+        except Exception:
+            total_portfolio = 0.0
+        
         lines = [
             "🧩 <b>ПОРТФЕЛЬ АЛЬТОВ</b>\n",
-            f"💰 Общая стоимость: ${total_alts_value:.2f}\n",
+            f"💎 <b>СТОИМОСТЬ ПОРТФЕЛЯ</b>: <code>${total_alts_value:.2f}</code>\n",
+            f"🏦 <b>ОБЩАЯ СТОИМОСТЬ</b>: <code>${total_portfolio:.2f}</code>\n",
             f"📈 Общий PnL: ${total_pnl:.4f}\n\n"
         ]
         
@@ -180,7 +202,6 @@ class AltsMonitor:
                 f"   📏 До продажи: ${to_sell:.4f}\n\n"
             )
         
-        # Открытые ордера
         lines.append("📋 <b>ОРДЕРА:</b>\n")
         any_orders = False
         for s, lst in orders_by_symbol.items():
