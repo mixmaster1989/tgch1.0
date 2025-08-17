@@ -133,13 +133,23 @@ class MarketScanner:
     def analyze_pair(self, symbol: str) -> Optional[Dict]:
         """Анализ одной торговой пары"""
         try:
-            # Получаем свечи (используем поддерживаемый интервал)
-            klines = self.mex_api.get_klines(symbol, '15m', 24)
+            # Получаем свечи (используем поддерживаемый интервал) с локальными ретраями
+            klines = None
+            for _ in range(3):
+                klines = self.mex_api.get_klines(symbol, '15m', 24)
+                if klines and len(klines) >= 20:
+                    break
+                time.sleep(0.4)
             if not klines or len(klines) < 20:
                 return None
             
-            # Получаем текущую цену
-            ticker = self.mex_api.get_ticker_price(symbol)
+            # Получаем текущую цену (локальные ретраи)
+            ticker = None
+            for _ in range(3):
+                ticker = self.mex_api.get_ticker_price(symbol)
+                if ticker and 'price' in ticker:
+                    break
+                time.sleep(0.3)
             if not ticker or 'price' not in ticker:
                 return None
             
@@ -343,6 +353,15 @@ class MarketScanner:
             self.last_scan_time = datetime.now()
             
             logger.info(f"🔄 Сканирование #{self.scan_count}...")
+            
+            # Не сканируем рынок, если баланс USDT < $6
+            try:
+                usdt_balance = self.get_usdt_balance()
+            except Exception:
+                usdt_balance = 0.0
+            if usdt_balance < 6.0:
+                logger.info(f"⏭️ Пропуск сканирования: USDT=${usdt_balance:.2f} < $6.00")
+                return
             
             # Сканируем рынок
             scan_results = self.scan_market()
