@@ -13,6 +13,8 @@ from typing import Dict, Tuple
 
 from mex_api import MexAPI
 from mexc_advanced_api import MexAdvancedAPI
+import requests
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,17 @@ class PostSaleBalancer:
 		self.mex = MexAPI()
 		self.adv = MexAdvancedAPI()
 		self.keep_assets = {'BTC', 'ETH', 'USDT', 'USDC'}
+		self.bot_token = TELEGRAM_BOT_TOKEN
+		self.chat_id = TELEGRAM_CHAT_ID
+
+	def _send_telegram_message(self, message: str):
+		if not self.bot_token or not self.chat_id:
+			return
+		try:
+			url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+			requests.post(url, data={'chat_id': self.chat_id, 'text': message, 'parse_mode': 'HTML'})
+		except Exception:
+			pass
 
 	def _get_usdc_usdt_price(self) -> float:
 		try:
@@ -149,7 +162,19 @@ class PostSaleBalancer:
 				amount_to_convert_usdt = min(free_usdt, over_usdt)
 				if amount_to_convert_usdt > 0:
 					logger.info(f"⚖️ Конвертация USDT→USDC на ${amount_to_convert_usdt:.2f} для выравнивания к 50/50")
-					return self._convert_usdt_to_usdc(amount_to_convert_usdt)
+					result = self._convert_usdt_to_usdc(amount_to_convert_usdt)
+					if result.get('success'):
+						order = result.get('order', {}) or {}
+						msg = (
+							"⚖️ <b>Балансировка 50/50</b>\n\n"
+							f"Действие: USDT → USDC (BUY)\n"
+							f"Сумма: ${amount_to_convert_usdt:.2f} ≈ {result.get('qty', 0):.6f} USDC @ {result.get('price', usdc_usdt):.6f}\n"
+							f"Портфель: Альты=${alts_value_usdt:.2f} | BTC/ETH=${btceth_value_usdt:.2f} | Цель на сторону=${target_each:.2f}\n"
+							f"Свободные: USDT=${free_usdt:.2f} | USDC=${free_usdc:.2f}\n"
+							f"Ордер: <code>{order.get('orderId', 'n/a')}</code>"
+						)
+						self._send_telegram_message(msg)
+					return result
 				return {'success': False, 'action': 'noop', 'reason': 'no_free_usdt'}
 
 			if btceth_value_usdt > target_each:
@@ -158,7 +183,19 @@ class PostSaleBalancer:
 				amount_to_convert_usdc = min(free_usdc, usdc_needed)
 				if amount_to_convert_usdc > 0:
 					logger.info(f"⚖️ Конвертация USDC→USDT на {amount_to_convert_usdc:.6f} для выравнивания к 50/50")
-					return self._convert_usdc_to_usdt(amount_to_convert_usdc)
+					result = self._convert_usdc_to_usdt(amount_to_convert_usdc)
+					if result.get('success'):
+						order = result.get('order', {}) or {}
+						msg = (
+							"⚖️ <b>Балансировка 50/50</b>\n\n"
+							f"Действие: USDC → USDT (SELL)\n"
+							f"Количество: {result.get('qty', 0):.6f} USDC @ {result.get('price', usdc_usdt):.6f}\n"
+							f"Портфель: Альты=${alts_value_usdt:.2f} | BTC/ETH=${btceth_value_usdt:.2f} | Цель на сторону=${target_each:.2f}\n"
+							f"Свободные: USDT=${free_usdt:.2f} | USDC=${free_usdc:.2f}\n"
+							f"Ордер: <code>{order.get('orderId', 'n/a')}</code>"
+						)
+						self._send_telegram_message(msg)
+					return result
 				return {'success': False, 'action': 'noop', 'reason': 'no_free_usdc'}
 
 			return {'success': True, 'action': 'balanced', 'reason': 'already_50_50'}
