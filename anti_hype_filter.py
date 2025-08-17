@@ -28,6 +28,10 @@ class AntiHypeFilter:
         # Кэш для избежания повторных запросов
         self.cache = {}
         self.cache_ttl = 300  # 5 минут
+        
+        # Кэш результатов проверки
+        self.result_cache = {}
+        self.result_cache_ttl = 120  # 2 минуты кэш результатов
     
     def _get_klines_cached(self, symbol: str, interval: str, limit: int = 100) -> List:
         """Получить свечи с кэшированием"""
@@ -128,24 +132,50 @@ class AntiHypeFilter:
             logger.error(f"Ошибка расчета изменения цены: {e}")
             return 0.0
     
+    def _get_cached_result(self, symbol: str) -> Optional[Dict]:
+        """Получить кэшированный результат"""
+        import time
+        cache_key = f"result_{symbol}"
+        if cache_key in self.result_cache:
+            cached_time, result = self.result_cache[cache_key]
+            if time.time() - cached_time < self.result_cache_ttl:
+                return result
+            else:
+                del self.result_cache[cache_key]
+        return None
+    
+    def _cache_result(self, symbol: str, result: Dict):
+        """Кэшировать результат"""
+        import time
+        cache_key = f"result_{symbol}"
+        self.result_cache[cache_key] = (time.time(), result)
+    
     def check_buy_permission(self, symbol: str) -> Dict:
         """Основная функция проверки разрешения на покупку"""
+        # Проверяем кэш результатов
+        cached_result = self._get_cached_result(symbol)
+        if cached_result:
+            logger.info(f"📋 Используем кэшированный результат для {symbol}")
+            return cached_result
+        
         try:
             logger.info(f"🔍 Проверка анти-хайп фильтра для {symbol}")
             
             # Получаем данные (используем поддерживаемые интервалы)
             klines_1h = self._get_klines_cached(symbol, '1h', 50)
-            klines_4h = self._get_klines_cached(symbol, '4h', 50)
+            klines_4h = self._get_klines_cached(symbol, '4h', 50)  # Используем 4h
             
-            # Fallback на 1m и 15m если 1h/4h не работают
+            # Fallback на 15m если 1h/4h не работают
             if not klines_1h:
                 klines_1h = self._get_klines_cached(symbol, '15m', 50)
             if not klines_4h:
-                klines_4h = self._get_klines_cached(symbol, '1h', 50)
+                klines_4h = self._get_klines_cached(symbol, '60m', 50)  # Fallback на 60m
             
             if not klines_1h or not klines_4h:
                 logger.warning(f"Нет данных свечей для {symbol}")
-                return {'allowed': True, 'multiplier': 1.0, 'reason': 'no_data'}
+                result = {'allowed': True, 'multiplier': 1.0, 'reason': 'no_data'}
+                self._cache_result(symbol, result)
+                return result
             
             # Текущая цена
             current_price = float(klines_1h[-1][4])
@@ -165,61 +195,75 @@ class AntiHypeFilter:
             # 1. ПРОВЕРКА ИМПУЛЬСА ВВЕРХ (блокировка)
             atr_threshold = (atr_4h / current_price) * 100 * self.atr_impulse_multiplier
             if price_change_4h > atr_threshold:
-                logger.warning(f"🚫 {symbol}: Импульс вверх {price_change_4h:.2f}% > {atr_threshold:.2f}% (3×ATR)")
-                return {
+                result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
                     'reason': f'hype_block_impulse_{price_change_4h:.1f}%'
                 }
+                logger.warning(f"🚫 {symbol}: Импульс вверх {price_change_4h:.2f}% > {atr_threshold:.2f}% (3×ATR)")
+                self._cache_result(symbol, result)
+                return result
             
             # 2. ПРОВЕРКА ПЕРЕКУПЛЕННОСТИ (блокировка)
             if rsi_1h > self.rsi_overbought and current_price > ema20_1h * (1 + self.ema_deviation):
-                logger.warning(f"🚫 {symbol}: Перекупленность RSI={rsi_1h:.1f} и цена выше EMA20+3%")
-                return {
+                result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
                     'reason': f'hype_block_overbought_RSI{rsi_1h:.0f}'
                 }
+                logger.warning(f"🚫 {symbol}: Перекупленность RSI={rsi_1h:.1f} и цена выше EMA20+3%")
+                self._cache_result(symbol, result)
+                return result
             
             # 3. ПРОВЕРКА МЕДВЕЖЬЕГО ТРЕНДА (блокировка)
             if current_price < ema200_4h:
-                logger.warning(f"🚫 {symbol}: Цена ниже EMA200 (медвежий тренд)")
-                return {
+                result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
                     'reason': 'bear_trend_below_ema200'
                 }
+                logger.warning(f"🚫 {symbol}: Цена ниже EMA200 (медвежий тренд)")
+                self._cache_result(symbol, result)
+                return result
             
             # 4. ПРОВЕРКА DCA НА ПАДЕНИИ (усиление)
             atr_dca_threshold = (atr_4h / current_price) * 100 * self.atr_dca_multiplier
             if price_change_4h < -atr_dca_threshold and rsi_1h < self.rsi_oversold:
-                logger.info(f"🚀 {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}")
-                return {
+                result = {
                     'allowed': True, 
                     'multiplier': 2.0, 
                     'reason': f'dca_boost_fall_{abs(price_change_4h):.1f}%'
                 }
+                logger.info(f"🚀 {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}")
+                self._cache_result(symbol, result)
+                return result
             
             # 5. БАЗОВЫЕ ПОКУПКИ (норма)
             if rsi_1h < self.rsi_neutral:
-                logger.info(f"✅ {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}")
-                return {
+                result = {
                     'allowed': True, 
                     'multiplier': 1.0, 
                     'reason': f'normal_buy_RSI{rsi_1h:.0f}'
                 }
+                logger.info(f"✅ {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}")
+                self._cache_result(symbol, result)
+                return result
             
             # 6. НЕЙТРАЛЬНАЯ ЗОНА (небольшое ограничение)
             logger.info(f"⚠️ {symbol}: Нейтральная зона, RSI={rsi_1h:.1f}")
-            return {
+            result = {
                 'allowed': True, 
                 'multiplier': 0.7, 
                 'reason': f'neutral_zone_RSI{rsi_1h:.0f}'
             }
+            self._cache_result(symbol, result)
+            return result
             
         except Exception as e:
             logger.error(f"❌ Ошибка анти-хайп фильтра для {symbol}: {e}")
-            return {'allowed': True, 'multiplier': 1.0, 'reason': 'error_fallback'}
+            result = {'allowed': True, 'multiplier': 1.0, 'reason': 'error_fallback'}
+            self._cache_result(symbol, result)
+            return result
     
     def get_filter_status(self, symbols: List[str]) -> Dict:
         """Получить статус фильтра для нескольких символов"""

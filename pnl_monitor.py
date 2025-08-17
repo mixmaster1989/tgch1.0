@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Мониторинг PnL с автоматической продажей при прибыли более 50 центов
+Мониторинг PnL с автоматической продажей при прибыли более 15 центов
 """
 
 from mex_api import MexAPI
@@ -741,7 +741,7 @@ class PnLMonitor:
                     f"💰 Рыночная цена: ${current_price:.4f}\n"
                     f"🎯 Лимитная цена: ${limit_price:.4f}\n"
                     f"📈 Тип: ЛИМИТНЫЙ (-0.1%)\n\n"
-                    f"🎯 <b>Причина:</b> PnL > $0.40\n"
+                    f"🎯 <b>Причина:</b> PnL > $0.15\n"
                     f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                 )
                 self.send_telegram_message(message)
@@ -860,7 +860,7 @@ class PnLMonitor:
                     message_lines.append(
                         f"{pnl_status} <b>{item['asset']}</b>:\n"
                         f"   📊 {item['quantity']:.6f} @ ${item['current_price']:.4f}\n"
-                        f"   💵 PnL: ${item['pnl']:.4f} (порог: $0.40)\n\n"
+                        f"   💵 PnL: ${item['pnl']:.4f} (порог: $0.15)\n\n"
                     )
                 message_lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
                 self.send_telegram_message("".join(message_lines))

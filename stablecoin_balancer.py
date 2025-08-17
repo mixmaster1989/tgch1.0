@@ -60,24 +60,56 @@ class StablecoinBalancer:
         if abs(usdt_diff) < self.min_balance_diff:
             return None  # Балансировка не нужна
         
+        # Проверяем минимальные требования для покупки BTC/ETH
+        min_btc_requirement = 12.0  # Минимум для BTC
+        min_eth_requirement = 5.0   # Минимум для ETH
+        
         if usdt_diff > 0:
             # USDT больше - конвертируем в USDC
-            return {
-                'from': 'USDT',
-                'to': 'USDC', 
-                'amount': abs(usdt_diff),
-                'symbol': 'USDCUSDT',
-                'side': 'BUY'  # Покупаем USDC за USDT
-            }
+            # Но только если после конвертации останется достаточно для покупки
+            if usdt_balance - abs(usdt_diff) < min_btc_requirement:
+                # Оставляем минимум для покупки BTC
+                adjusted_amount = usdt_balance - min_btc_requirement
+                if adjusted_amount < self.min_balance_diff:
+                    return None  # Слишком маленькая сумма для конвертации
+                return {
+                    'from': 'USDT',
+                    'to': 'USDC', 
+                    'amount': adjusted_amount,
+                    'symbol': 'USDCUSDT',
+                    'side': 'BUY'  # Покупаем USDC за USDT
+                }
+            else:
+                return {
+                    'from': 'USDT',
+                    'to': 'USDC', 
+                    'amount': abs(usdt_diff),
+                    'symbol': 'USDCUSDT',
+                    'side': 'BUY'  # Покупаем USDC за USDT
+                }
         else:
             # USDC больше - конвертируем в USDT
-            return {
-                'from': 'USDC',
-                'to': 'USDT',
-                'amount': abs(usdc_diff),
-                'symbol': 'USDCUSDT', 
-                'side': 'SELL'  # Продаем USDC за USDT
-            }
+            # Но только если после конвертации останется достаточно для покупки
+            if usdc_balance - abs(usdc_diff) < min_eth_requirement:
+                # Оставляем минимум для покупки ETH
+                adjusted_amount = usdc_balance - min_eth_requirement
+                if adjusted_amount < self.min_balance_diff:
+                    return None  # Слишком маленькая сумма для конвертации
+                return {
+                    'from': 'USDC',
+                    'to': 'USDT',
+                    'amount': adjusted_amount,
+                    'symbol': 'USDCUSDT', 
+                    'side': 'SELL'  # Продаем USDC за USDT
+                }
+            else:
+                return {
+                    'from': 'USDC',
+                    'to': 'USDT',
+                    'amount': abs(usdc_diff),
+                    'symbol': 'USDCUSDT', 
+                    'side': 'SELL'  # Продаем USDC за USDT
+                }
     
     def execute_conversion(self, conversion):
         """Выполнить конвертацию стейблкоинов"""
@@ -154,6 +186,11 @@ class StablecoinBalancer:
             
             # Рассчитываем балансировку
             conversion = self.calculate_rebalance(usdt_balance, usdc_balance)
+            
+            # Проверяем, что сумма конвертации не слишком мала для покупки BTC/ETH
+            if conversion and conversion['amount'] < 15.0:  # Минимум $15 для конвертации
+                logger.info(f"Сумма конвертации ${conversion['amount']:.2f} слишком мала для последующей покупки BTC/ETH")
+                return
             
             if not conversion:
                 logger.info(f"Балансировка не нужна (разница < ${self.min_balance_diff})")

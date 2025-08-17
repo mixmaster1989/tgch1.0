@@ -204,6 +204,27 @@ class MexAdvancedAPI:
             print(f"Ошибка API trade fee: {e}")
             return {}
     
+    def get_ticker_price(self, symbol: str) -> Dict:
+        """
+        Получить текущую цену тикера
+        """
+        try:
+            url = f"{self.base_url}/api/v3/ticker/price"
+            params = {'symbol': symbol}
+            
+            response = requests.get(url, params=params, headers=self._get_headers())
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data
+            else:
+                print(f"Ошибка получения цены {symbol}: {response.status_code}")
+                return {}
+                
+        except Exception as e:
+            print(f"Ошибка API ticker price: {e}")
+            return {}
+    
     def get_symbol_fee(self, symbol: str) -> Dict:
         """
         Получить комиссии для конкретной пары

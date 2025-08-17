@@ -2,7 +2,7 @@
 """
 Alts Monitor
 - Monitors all non-BTC/ETH/USDT/USDC assets
-- If unrealized PnL (AvgCost) > $0.20: place a near-market limit SELL to realize profit
+- If unrealized PnL (AvgCost) > $0.15: place a near-market limit SELL to realize profit
 - With available USDT >= $5: buy from top-5 alts equally (BNB, SOL, XRP, ADA, DOGE)
 """
 import time
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 TOP5_ALTS = ['BNB', 'SOL', 'XRP', 'ADA', 'DOGE']
-SELL_THRESHOLD_USD = 0.20
+SELL_THRESHOLD_USD = 0.15  # Снижено с 0.20 до 0.15
 CHECK_INTERVAL_SEC = 60
 NOTIFY_INTERVAL_SEC = 300
 

@@ -113,7 +113,15 @@ class MexAPI:
         return result if isinstance(result, dict) else {'error': 'unknown_error', 'message': 'no valid response'}
     
     def get_klines(self, symbol: str, interval: str = '1m', limit: int = 100) -> List:
-        """Получить данные свечей с fallback на open API v2"""
+        """Получить данные свечей с оптимизированным выбором API"""
+        # Интервалы, которые лучше работают через v2
+        v2_intervals = {'1m', '5m', '15m', '30m', '60m', '1h', '4h', '8h', '1d', '1w'}
+        
+        # Если интервал лучше работает через v2, используем его сразу
+        if interval in v2_intervals:
+            return self._get_klines_v2(symbol, interval, limit)
+        
+        # Для остальных интервалов пробуем v3, потом fallback на v2
         url = f"{self.base_url}/api/v3/klines"
         params = {
             'symbol': symbol,
@@ -123,33 +131,36 @@ class MexAPI:
         result = self._make_request_with_retry('GET', url, params=params)
         if isinstance(result, list) and result:
             return result
-        # Fallback на open API v2
+        
+        # Fallback на v2
+        return self._get_klines_v2(symbol, interval, limit)
+    
+    def _get_klines_v2(self, symbol: str, interval: str, limit: int) -> List:
+        """Получить данные свечей через API v2"""
         try:
-            # Маппинг интервалов для v2 (используются минуты/часы в виде Xm)
+            # Маппинг интервалов для v2
             interval_map = {
                 '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
-                '1h': '60m', '4h': '240m', '8h': '480m', '1d': '1d', '1w': '1w'
+                '1h': '60m', '4h': '240m', '240m': '4h', '8h': '480m', '1d': '1d', '1w': '1w'
             }
             v2_interval = interval_map.get(interval, interval)
             v2_symbol = self._to_v2_symbol(symbol)
             v2_url = f"https://www.mexc.com/open/api/v2/market/kline?symbol={v2_symbol}&interval={v2_interval}&limit={limit}"
-            v2_resp = requests.get(v2_url, timeout=15)
+            v2_resp = requests.get(v2_url, timeout=10)  # Уменьшил timeout
             if v2_resp.status_code == 200:
                 data = v2_resp.json()
                 if data.get('code') == 200 and isinstance(data.get('data'), list):
                     # Приводим к формату v3 klines [openTime, open, high, low, close, volume, ...]
                     klines = []
                     for k in data['data']:
-                        # Ожидаемый формат v2: [ts, open, high, low, close, volume]
                         if isinstance(k, list) and len(k) >= 6:
                             klines.append([
                                 k[0], k[1], k[2], k[3], k[4], k[5]
                             ])
                     return klines
         except Exception as e:
-            logger.warning(f"Fallback v2 get_klines ошибка: {e}")
-        # Возвращаем как есть (ошибка или пусто)
-        return result if isinstance(result, list) else []
+            logger.warning(f"V2 get_klines ошибка для {symbol}: {e}")
+        return []
     
     def place_order(self, symbol: str, side: str, quantity: float, price: Optional[float] = None) -> Dict:
         """Разместить ордер"""

@@ -39,7 +39,7 @@ class MarketAnalyzer:
         """Получить свечи для символа"""
         try:
             # Пробуем рабочие интервалы MEX
-            intervals = ['60m', '4h', '1d', '30m', '15m']
+            intervals = ['60m', '4h', '1d', '30m', '15m']  # Используем 4h
             for intv in intervals:
                 try:
                     result = self.mex_api.get_klines(symbol, intv, limit)
@@ -198,8 +198,13 @@ class MarketAnalyzer:
             print(f"Предупреждение: нулевая или отрицательная цена для {symbol}: {price}")
             return 0.0
             
-        # Базовый размер позиции
-        base_allocation = self.trading_balance * 0.1  # 10% от торгового баланса
+        # Адаптивная логика: при малом торговом балансе используем больше средств
+        if self.trading_balance < 20.0:
+            # При балансе меньше $20 используем 20% от баланса
+            base_allocation = self.trading_balance * 0.2
+        else:
+            # При большем балансе используем 10% от торгового баланса
+            base_allocation = self.trading_balance * 0.1
         
         # Корректировка по скору
         score_multiplier = min(score / 5.0, 2.0)  # Максимум 2x
@@ -207,8 +212,12 @@ class MarketAnalyzer:
         # Итоговый размер в USDT
         position_size_usdt = base_allocation * score_multiplier
         
-        # Минимум $5, максимум $20
-        position_size_usdt = max(5.0, min(position_size_usdt, 20.0))
+        # Обеспечиваем минимальную сумму $5
+        if position_size_usdt < 5.0 and self.trading_balance >= 5.0:
+            position_size_usdt = 5.0
+        
+        # Максимум $20
+        position_size_usdt = min(position_size_usdt, 20.0)
         
         # Количество монет
         quantity = position_size_usdt / price

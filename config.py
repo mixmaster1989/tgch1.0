@@ -29,7 +29,7 @@ TAKE_PROFIT_PERCENT = 5.0
 
 # Neural Network Configuration
 GOLDEN_MODEL = 'anthropic/claude-opus-4'  # Claude Opus 4 для финальных решений
-SILVER_MODEL = 'openai/gpt-4o-mini'  # GPT-4o-mini для экспертов
+SILVER_MODEL = 'deepseek/deepseek-r1-0528:free'  # Бесплатная модель для повседневных задач
 
 # AI Trading Models
 AI_EXPERT_MODELS = {
@@ -43,9 +43,9 @@ ANALYSIS_INTERVAL = 300  # seconds
 
 # PnL Monitor Configuration
 PNL_MONITOR_CONFIG = {
-    'profit_threshold': 0.40,  # 40 центов
-    'check_interval': 60,      # Проверка каждую минуту
-    'notification_interval': 300,  # Уведомления каждые 5 минут
+    'profit_threshold': 0.15,  # Снижено с 0.40 до 0.15 (15 центов)
+    'check_interval': 60,      # Проверка каждую минуту (не меняем)
+    'notification_interval': 600,  # Уведомления каждые 10 минут (увеличено в 2 раза)
     'trading_pairs': ['BTCUSDC', 'ETHUSDC'],
     'auto_sell_enabled': True,
     'telegram_notifications': True,

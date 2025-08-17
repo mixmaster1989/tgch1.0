@@ -81,6 +81,16 @@ class OpenRouterManager:
             ])
         return False
     
+    def _is_key_error(self, result: Dict) -> bool:
+        """Проверить, является ли ошибка проблемой с ключом (401, 403, etc)"""
+        if not result['success']:
+            error_text = str(result['response']).lower()
+            return any(keyword in error_text for keyword in [
+                'user not found', 'unauthorized', 'forbidden', 'invalid key',
+                'authentication failed', 'api key', '401', '403'
+            ])
+        return False
+    
     def _get_next_silver_key(self) -> Optional[str]:
         """Получить следующий доступный silver ключ"""
         print(f"🔄 Поиск доступного silver ключа: индекс={self.current_silver_index}, заблокировано={len(self.failed_keys)}/{len(self.silver_keys)}")
@@ -106,49 +116,52 @@ class OpenRouterManager:
     
     def request_with_silver_keys(self, prompt: str, model: str = None) -> Dict:
         """Выполнить запрос с использованием silver ключей с переключением при лимите"""
-        print(f"🚀 Запрос с silver ключами: модель={model or SILVER_MODEL}, попыток={len(self.silver_keys)}")
+        print(f"🚀 Запрос с silver ключами: модель={model or SILVER_MODEL}, попыток={len(self.silver_keys) * 3}")
         
-        attempts = 0
-        max_attempts = len(self.silver_keys)
+        # Пробуем каждый ключ до 3 раз с паузами
+        for key_index in range(len(self.silver_keys)):
+            for retry in range(3):  # 3 попытки на каждый ключ
+                current_key = self.silver_keys[key_index]
+                
+                if current_key in self.failed_keys:
+                    print(f"❌ Ключ {key_index + 1} заблокирован, пропускаю...")
+                    break
+                
+                key_preview = current_key[:20] + "..." if current_key else "None"
+                print(f"🔄 Попытка {retry + 1}/3 для ключа {key_index + 1}: {key_preview}")
+                
+                result = self._make_request(current_key, prompt, model or SILVER_MODEL)
+                
+                if result['success']:
+                    response_text = result['response']['choices'][0]['message']['content']
+                    print(f"✅ Silver запрос успешен: ключ {key_index + 1}, ответ {len(response_text)} символов")
+                    return {
+                        'success': True,
+                        'response': response_text,
+                        'key_used': current_key[:20] + "..."
+                    }
+                
+                # Если превышен лимит или проблема с ключом
+                if self._is_rate_limit_error(result) or self._is_key_error(result):
+                    error_type = "исчерпал лимит" if self._is_rate_limit_error(result) else "проблема с ключом"
+                    print(f"⚠️ Ключ {key_index + 1} {error_type}, попытка {retry + 1}/3")
+                    
+                    if retry < 2:  # Если это не последняя попытка для этого ключа
+                        wait_time = 1 + retry  # 1, 2, 3 секунды
+                        print(f"⏳ Ждем {wait_time} сек перед следующей попыткой...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # Последняя попытка для этого ключа, блокируем его
+                        self.failed_keys.add(current_key)
+                        print(f"💀 Ключ {key_index + 1} заблокирован после 3 попыток")
+                        break
+                else:
+                    # Другая ошибка, пробуем следующий ключ
+                    print(f"❌ Ключ {key_index + 1} вернул ошибку: {str(result['response'])[:100]}...")
+                    break
         
-        while attempts < max_attempts:
-            current_key = self._get_next_silver_key()
-            
-            if not current_key:
-                print(f"💀 Все silver ключи недоступны после {attempts} попыток")
-                return {
-                    'success': False,
-                    'response': 'Все silver ключи исчерпали дневной лимит',
-                    'key_used': None
-                }
-            
-            result = self._make_request(current_key, prompt, model or SILVER_MODEL)
-            
-            if result['success']:
-                response_text = result['response']['choices'][0]['message']['content']
-                print(f"✅ Silver запрос успешен: ответ {len(response_text)} символов")
-                return {
-                    'success': True,
-                    'response': response_text,
-                    'key_used': current_key[:20] + "..."
-                }
-            
-            # Если превышен лимит, добавляем ключ в заблокированные
-            if self._is_rate_limit_error(result):
-                self.failed_keys.add(current_key)
-                print(f"⚠️ Silver ключ исчерпал лимит, переключаюсь на следующий... (попытка {attempts + 1}/{max_attempts})")
-                attempts += 1
-                continue
-            else:
-                # Другая ошибка, возвращаем её
-                print(f"❌ Silver ключ вернул ошибку: {str(result['response'])[:100]}...")
-                return {
-                    'success': False,
-                    'response': result['response'],
-                    'key_used': current_key[:20] + "..."
-                }
-        
-        print(f"💀 Все silver ключи недоступны после {max_attempts} попыток")
+        print(f"💀 Все silver ключи недоступны после {len(self.silver_keys) * 3} попыток")
         return {
             'success': False,
             'response': 'Все silver ключи недоступны',
