@@ -56,6 +56,54 @@ class MarketScanner:
         except Exception as e:
             logger.error(f"Ошибка отправки в Telegram: {e}")
             return None
+
+    def _build_reasoning(self, opp: Dict) -> Dict[str, str]:
+        """Построить развернутые причины и краткосрочный прогноз по возможности покупки."""
+        reasons_verbose = []
+        rsi = opp.get('rsi', 50)
+        macd = opp.get('macd_signal', 'NEUTRAL')
+        vol = opp.get('volume_ratio', 1.0)
+        bb = opp.get('bb_position', 0.5)
+        filt = opp.get('filter_result', {}) or {}
+        filt_reason = filt.get('reason')
+
+        if rsi < 30:
+            reasons_verbose.append("RSI < 30 — перепроданность, ожидаем технический отскок")
+        elif rsi < 45:
+            reasons_verbose.append("RSI в нижней зоне — преимущество покупателей при развороте")
+        if bb < 0.2:
+            reasons_verbose.append("Цена у нижней границы Bollinger — вероятен отскок к средней")
+        if vol > 1.5:
+            reasons_verbose.append("Объемы выше нормы — повышенная вероятность импульса")
+        elif vol > 1.2:
+            reasons_verbose.append("Объемы нормализуются — ликвидность достаточна для входа")
+        if macd == 'BUY':
+            reasons_verbose.append("MACD подает сигнал BUY — подтверждение смены импульса")
+        elif macd == 'SELL':
+            reasons_verbose.append("MACD SELL — вход только как контртренд с малым риском")
+        if filt_reason:
+            reasons_verbose.append(f"Анти‑хайп фильтр: {filt_reason}")
+
+        # Простой краткосрочный прогноз
+        bullish_signals = sum([
+            rsi < 35,
+            bb < 0.3,
+            macd == 'BUY',
+            vol > 1.2
+        ])
+        if bullish_signals >= 3:
+            forecast = "Ожидаю отскок 1–3% в ближайшие 2–6 часов при сохранении объема"
+        elif bullish_signals == 2:
+            forecast = "Вероятен тех. откат 0.5–2% и возврат к средней полосе"
+        elif macd == 'SELL' or rsi > 70 or bb > 0.8:
+            forecast = "Риски продолжения снижения/боковика, возможна доборная точка ниже"
+        else:
+            forecast = "Боковик с уклоном к средним значениям; контроль риска обязателен"
+
+        return {
+            'why': "\n   • " + "\n   • ".join(reasons_verbose) if reasons_verbose else "\n   • Техническая конфигурация соответствует правилам входа",
+            'forecast': forecast
+        }
     
     def get_usdt_balance(self) -> float:
         """Получить баланс USDT"""
@@ -393,14 +441,14 @@ class MarketScanner:
             
             # Проверяем баланс USDT
             usdt_balance = self.get_usdt_balance()
-            if usdt_balance < 10.0:
+            if usdt_balance < 6.0:
                 logger.info(f"❌ Недостаточно USDT: ${usdt_balance:.2f}")
                 # Отправляем уведомление о недостатке средств
                 insufficient_message = (
                     f"💰 <b>НЕДОСТАТОЧНО СРЕДСТВ ДЛЯ ПОКУПКИ</b>\n\n"
                     f"📊 Найдено возможностей: {len(buy_opportunities)}\n"
                     f"💵 Текущий баланс USDT: ${usdt_balance:.2f}\n"
-                    f"⚠️ Минимум для покупки: $10.00\n\n"
+                    f"⚠️ Минимум для покупки: $6.00\n\n"
                     f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                 )
                 self.send_telegram_message(insufficient_message)
@@ -420,11 +468,11 @@ class MarketScanner:
                 # При большем балансе используем 30% от баланса, максимум $50
                 purchase_amount = min(usdt_balance * 0.3, 50.0)
             
-            # Обеспечиваем минимальную сумму $5
-            if purchase_amount < 5.0 and usdt_balance >= 5.0:
-                purchase_amount = 5.0
+            # Обеспечиваем минимальную сумму $6
+            if purchase_amount < 6.0 and usdt_balance >= 6.0:
+                purchase_amount = 6.0
             
-            if purchase_amount < 5.0:
+            if purchase_amount < 6.0:
                 logger.info("❌ Сумма покупки слишком мала")
                 # Отправляем уведомление о малой сумме
                 small_amount_message = (
@@ -432,8 +480,8 @@ class MarketScanner:
                     f"📊 Найдено возможностей: {len(buy_opportunities)}\n"
                     f"💵 Рассчитанная сумма: ${purchase_amount:.2f}\n"
                     f"💳 Доступный баланс: ${usdt_balance:.2f}\n"
-                    f"⚠️ Минимум для покупки: $5.00\n\n"
-                    f"💡 <b>РЕШЕНИЕ:</b> Пополните баланс до $10+ для активации автопокупок\n\n"
+                    f"⚠️ Минимум для покупки: $6.00\n\n"
+                    f"💡 <b>РЕШЕНИЕ:</b> Пополните баланс до $6+ для активации автопокупок\n\n"
                     f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                 )
                 self.send_telegram_message(small_amount_message)
@@ -581,6 +629,7 @@ class MarketScanner:
                     
                     if 'orderId' in order:
                         # Успех!
+                        explain = self._build_reasoning(opportunity)
                         success_message = (
                             f"✅ <b>ПОКУПКА УСПЕШНА!</b>\n\n"
                             f"📈 <b>{symbol}</b>\n"
@@ -592,7 +641,8 @@ class MarketScanner:
                             f"🎯 <b>АНАЛИЗ:</b>\n"
                             f"⭐ Скор: {opportunity['score']}\n"
                             f"📊 RSI: {opportunity['rsi']:.1f}\n"
-                            f"🔍 Причины: {', '.join(opportunity['reasons'][:3])}\n\n"
+                            f"🔍 Причины:{explain['why']}\n\n"
+                            f"🧭 <b>ПРОГНОЗ (2–6 ч):</b> {explain['forecast']}\n\n"
                             f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                         )
                         self.send_telegram_message(success_message)

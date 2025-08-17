@@ -36,15 +36,61 @@ class OrdersReporter:
 		except Exception:
 			pass
 
+	def _get_candidate_symbols(self) -> List[str]:
+		"""Сформировать список символов для опроса ордеров на основе балансов и основных пар."""
+		try:
+			info = self.mex_api.get_account_info() or {}
+			assets: List[str] = []
+			for b in info.get('balances', []) or []:
+				asset = b.get('asset')
+				total = float(b.get('free', 0) or 0) + float(b.get('locked', 0) or 0)
+				if total > 0 and asset not in {'USDT','USDC'}:
+					assets.append(asset)
+			# Формируем символы USDT/USDC
+			symbols: List[str] = []
+			for a in assets:
+				for quote in ('USDT','USDC'):
+					sym = f"{a}{quote}"
+					# проверим, есть ли правила (символ существует)
+					try:
+						rules = self.mex_adv.get_symbol_rules(sym)
+						if rules:
+							symbols.append(sym)
+					except Exception:
+						continue
+			# Добавим ключевые пары на всякий случай
+			for s in ('BTCUSDT','ETHUSDT','BTCUSDC','ETHUSDC'):
+				if s not in symbols:
+					try:
+						rules = self.mex_adv.get_symbol_rules(s)
+						if rules:
+							symbols.append(s)
+					except Exception:
+						pass
+			# Ограничим до разумного количества
+			return symbols[:40]
+		except Exception:
+			return []
+
 	def _get_recent_orders(self, limit: int = 10) -> List[Dict]:
 		try:
-			orders = self.mex_api.get_order_history(limit=200)
-			if not isinstance(orders, list):
-				return []
-			# Оставляем FILLED
-			filled = [o for o in orders if str(o.get('status','')).upper() in {'FILLED','PARTIALLY_FILLED'}]
-			# Сортируем по времени убыв.
-			filled.sort(key=lambda x: x.get('time') or x.get('updateTime') or 0, reverse=True)
+			symbols = self._get_candidate_symbols()
+			all_orders: List[Dict] = []
+			for sym in symbols:
+				try:
+					partial = self.mex_api.get_order_history(symbol=sym, limit=50)
+					if isinstance(partial, list):
+						for o in partial:
+							o['symbol'] = sym  # убеждаемся, что символ есть
+						all_orders.extend(partial)
+				except Exception:
+					continue
+			# Фильтруем по статусу
+			filled = [o for o in all_orders if str(o.get('status','')).upper() in {'FILLED','PARTIALLY_FILLED'}]
+			# Сортируем по времени (updateTime / time)
+			def _ot(o: Dict):
+				return o.get('updateTime') or o.get('time') or 0
+			filled.sort(key=_ot, reverse=True)
 			return filled[:limit]
 		except Exception as e:
 			logger.error(f"Ошибка получения ордеров: {e}")
