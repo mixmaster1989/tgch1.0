@@ -839,30 +839,16 @@ class PnLMonitor:
                 self.last_summary_time = 0
             
             if current_time - self.last_summary_time >= 300 and pnl_data:  # 5 минут
-                # Получаем общую стоимость портфеля
+                # Получаем стоимость портфеля BTC/ETH (без стейблкоинов)
                 try:
-                    account_info = self.mex_api.get_account_info()
-                    total_portfolio = 0.0
-                    if account_info and 'balances' in account_info:
-                        for balance in account_info['balances']:
-                            asset = balance['asset']
-                            total = float(balance.get('free', 0)) + float(balance.get('locked', 0))
-                            if total > 0:
-                                if asset in ['USDT', 'USDC']:
-                                    total_portfolio += total
-                                else:
-                                    try:
-                                        ticker = self.mex_api.get_ticker_price(f"{asset}USDT")
-                                        if ticker and 'price' in ticker:
-                                            total_portfolio += total * float(ticker['price'])
-                                    except:
-                                        pass
-                except:
-                    total_portfolio = 0.0
+                    portfolio_value = sum((it['quantity'] * it['current_price']) for it in pnl_data)
+                except Exception:
+                    portfolio_value = 0.0
                 
                 message_lines = [
                     "📊 <b>ПОРТФЕЛЬ BTC/ETH</b>\n",
-                    f"💰 Общая стоимость: ${total_portfolio:.2f}\n\n"
+                    # Большая строка с акцентом на стоимость (без цветов, но с эмодзи и HTML)
+                    f"💎 <b>СТОИМОСТЬ ПОРТФЕЛЯ</b>: <code>${portfolio_value:.2f}</code>\n\n"
                 ]
                 for item in pnl_data:
                     pnl_status = "📈" if item['pnl'] > 0 else "📉" if item['pnl'] < 0 else "➡️"
