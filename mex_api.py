@@ -260,3 +260,58 @@ class MexAPI:
         url = f"{self.base_url}/api/v3/exchangeInfo"
         response = requests.get(url)
         return response.json()
+
+    # ===== Wallet endpoints =====
+    def get_deposit_history(self, coin: Optional[str] = None, startTime: Optional[int] = None,
+                             endTime: Optional[int] = None, limit: Optional[int] = None) -> Dict:
+        """Получить историю депозитов (поддерживающие сети)
+
+        Args:
+            coin: Монета, напр. 'USDT'
+            startTime: Начало периода (ms)
+            endTime: Конец периода (ms)
+            limit: Лимит записей
+        Returns:
+            Dict или List с историей депозитов (как возвращает API)
+        """
+        timestamp = int(time.time() * 1000)
+        params = { 'timestamp': timestamp }
+        if coin:
+            params['coin'] = coin
+        if startTime:
+            params['startTime'] = startTime
+        if endTime:
+            params['endTime'] = endTime
+        if limit:
+            params['limit'] = limit
+
+        query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+        signature = self._generate_signature(query_string)
+        url = f"{self.base_url}/api/v3/capital/deposit/hisrec?{query_string}&signature={signature}"
+        return self._make_request_with_retry('GET', url, headers=self._get_headers(True))
+
+    def sum_deposits_usd(self, coin: str = 'USDT', startTime: Optional[int] = None,
+                          endTime: Optional[int] = None) -> Dict:
+        """Подсчитать сумму депозитов по монете за период.
+
+        Возвращает словарь с полями total_amount и count. Статусы фильтруются на успешные, если есть.
+        """
+        data = self.get_deposit_history(coin=coin, startTime=startTime, endTime=endTime)
+        total = 0.0
+        count = 0
+        try:
+            if isinstance(data, list):
+                for item in data:
+                    c = item.get('coin') or item.get('asset')
+                    if c != coin:
+                        continue
+                    # статус успешности (если присутствует)
+                    status = str(item.get('status', '')).lower()
+                    if status and status not in {'success', 'successful', 'done', 'finished', 'completed', '1', 'true'}:
+                        continue
+                    amt = float(item.get('amount') or item.get('qty') or 0)
+                    total += amt
+                    count += 1
+            return {'success': True, 'total_amount': total, 'count': count, 'raw': data}
+        except Exception as e:
+            return {'success': False, 'error': str(e), 'raw': data}
