@@ -97,6 +97,9 @@ class MarketScanner:
             # Берем топ пар
             top_pairs = [pair['symbol'] for pair in usdt_pairs[:limit]]
             
+            # ИСКЛЮЧАЕМ BTCUSDT и ETHUSDT
+            top_pairs = [s for s in top_pairs if s not in ('BTCUSDT', 'ETHUSDT')]
+            
             logger.info(f"✅ Получено {len(top_pairs)} торговых пар")
             logger.info(f"📊 Топ-5 по объему: {top_pairs[:5]}")
             
@@ -109,7 +112,8 @@ class MarketScanner:
     def get_fallback_pairs(self) -> List[str]:
         """Резервный список торговых пар"""
         return [
-            'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT',
+            # Исключены BTCUSDT и ETHUSDT
+            'BNBUSDT', 'ADAUSDT', 'SOLUSDT',
             'DOTUSDT', 'LINKUSDT', 'MATICUSDT', 'AVAXUSDT', 'UNIUSDT',
             'ATOMUSDT', 'LTCUSDT', 'XRPUSDT', 'BCHUSDT', 'ETCUSDT',
             'FILUSDT', 'NEARUSDT', 'ALGOUSDT', 'VETUSDT', 'ICPUSDT'
@@ -119,6 +123,8 @@ class MarketScanner:
         """Обновить список торговых пар"""
         try:
             self.trading_pairs = self.get_top_trading_pairs(self.max_pairs)
+            # Дополнительная страховка: исключаем BTCUSDT и ETHUSDT, если вдруг попали
+            self.trading_pairs = [s for s in self.trading_pairs if s not in ('BTCUSDT', 'ETHUSDT')]
             logger.info(f"🔄 Список торговых пар обновлен: {len(self.trading_pairs)} пар")
         except Exception as e:
             logger.error(f"Ошибка обновления торговых пар: {e}")
