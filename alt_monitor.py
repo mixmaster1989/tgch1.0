@@ -146,6 +146,90 @@ class AltsMonitor:
             return {'success': False, 'error': 'qty_too_small'}
         return self.mex.place_order(symbol=symbol, side='BUY', quantity=qty, price=price)
 
+    def _get_total_deposit_usd(self) -> float:
+        """Суммарный депозит в USD (USDT+USDC+стоимость активов по USDT)."""
+        try:
+            info = self.mex.get_account_info() or {}
+            usdc_usdt = 1.0
+            try:
+                px = self.mex.get_ticker_price('USDCUSDT') or {}
+                if 'price' in px:
+                    usdc_usdt = float(px['price'])
+            except Exception:
+                pass
+            total = 0.0
+            for b in info.get('balances', []) or []:
+                asset = b.get('asset')
+                total_qty = float(b.get('free', 0) or 0) + float(b.get('locked', 0) or 0)
+                if total_qty <= 0:
+                    continue
+                if asset == 'USDT':
+                    total += total_qty
+                elif asset == 'USDC':
+                    total += total_qty * usdc_usdt
+                else:
+                    # сначала пробуем USDT-пару
+                    price = None
+                    try:
+                        px = self.mex.get_ticker_price(f"{asset}USDT") or {}
+                        if 'price' in px:
+                            price = float(px['price'])
+                    except Exception:
+                        price = None
+                    if price is None:
+                        try:
+                            px = self.mex.get_ticker_price(f"{asset}USDC") or {}
+                            if 'price' in px:
+                                price = float(px['price']) * usdc_usdt
+                        except Exception:
+                            price = None
+                    if price:
+                        total += total_qty * price
+            return total
+        except Exception:
+            return 0.0
+
+    def _get_min_lot_usdt(self, symbol: str) -> float:
+        """Минимальный лот в долларах по правилам биржи."""
+        try:
+            rules = self.adv.get_symbol_rules(symbol) or {}
+            min_qty = float(rules.get('minQty', 0) or 0)
+            step = float(rules.get('stepSize', 0) or 0)
+            # Текущая цена (лучший аск)
+            best_bid, best_ask = self._get_best_bid_ask(symbol)
+            price = best_ask if best_ask else None
+            if price is None:
+                px = self.mex.get_ticker_price(symbol) or {}
+                if 'price' in px:
+                    price = float(px['price'])
+            if not price or price <= 0:
+                return 0.0
+            base_min_qty = min_qty if min_qty > 0 else step if step > 0 else 0.0
+            return base_min_qty * price if base_min_qty > 0 else 0.0
+        except Exception:
+            return 0.0
+
+    def _place_limit_buy_with_retries(self, symbol: str, target_usdt: float, max_retries: int = 3) -> Dict:
+        """Лимитная покупка с пересчетом минимального лота и цены на каждом ретрае."""
+        delay = 1.0
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Пересчет минимального лота и доступной суммы
+                min_lot = self._get_min_lot_usdt(symbol)
+                spend = max(target_usdt, min_lot)
+                # Не выходить за лимит свободного USDT
+                balances = self._get_balances()
+                free_usdt = balances.get('USDT', {}).get('free', 0.0)
+                if spend > free_usdt:
+                    return {'success': False, 'error': f'insufficient_usdt: need ${spend:.2f}, have ${free_usdt:.2f}'}
+                res = self._place_limit_buy_near_market(symbol, spend)
+                if res and 'orderId' in res:
+                    return res
+            except Exception as e:
+                pass
+            time.sleep(delay)
+        return {'success': False, 'error': 'max_retries_exceeded'}
+
     def _fetch_open_orders_map(self, symbols: List[str]) -> Dict[str, list]:
         result: Dict[str, list] = {}
         for s in symbols:
@@ -269,43 +353,48 @@ class AltsMonitor:
         # BUY phase с анти-хайп фильтром
         balances = self._get_balances()
         usdt = balances.get('USDT', {}).get('free', 0.0)
-        if usdt >= 5.0:
-            per = usdt / len(TOP5_ALTS)
+        if usdt > 0.0:
+            # 1% от депозита
+            deposit_usd = self._get_total_deposit_usd()
+            base_amount = deposit_usd * 0.01 if deposit_usd > 0 else 0.0
+            # выбираем первый доступный альт из списка
             for alt in TOP5_ALTS:
-                if alt in balances:  # already have; skip
+                if alt in balances:  # уже держим; пропускаем
                     continue
                 sym = f"{alt}USDT"
                 if not self.adv.get_symbol_rules(sym):
                     continue
-                
                 # Проверяем анти-хайп фильтр для альта
                 alt_filter = self.anti_hype_filter.check_buy_permission(sym)
-                
                 if not alt_filter['allowed']:
                     logger.warning(f"🚫 {alt} покупка заблокирована: {alt_filter['reason']}")
                     continue
-                
                 # Применяем множитель фильтра
-                adjusted_amount = per * alt_filter['multiplier']
-                multiplier_text = f" (×{alt_filter['multiplier']})" if alt_filter['multiplier'] != 1.0 else ""
-                
-                logger.info(f"Buying {alt}{multiplier_text} for ${adjusted_amount:.2f} [{alt_filter['reason']}]")
-                res = self._place_limit_buy_near_market(sym, adjusted_amount)
+                planned_amount = base_amount * alt_filter['multiplier']
+                # Покупаем минимум лот если 1% меньше
+                min_lot = self._get_min_lot_usdt(sym)
+                spend_amount = max(planned_amount, min_lot)
+                # Кэп по свободному USDT
+                spend_amount = min(spend_amount, usdt)
+                if spend_amount < min_lot or spend_amount <= 0:
+                    logger.info(f"❌ Недостаточно USDT для минимального лота {alt}: нужно ${min_lot:.2f}, есть ${usdt:.2f}")
+                    break
+                logger.info(f"Buying {alt} for ${spend_amount:.2f} (1% депозита ×{alt_filter['multiplier']})")
+                res = self._place_limit_buy_with_retries(sym, spend_amount, max_retries=3)
                 logger.info(f"BUY result: {res}")
-                
-                # Немедленное уведомление о покупке
                 if res and 'orderId' in res:
                     buy_message = (
                         f"<b>🛍️ ПОКУПКА АЛЬТКОИНА</b>\n\n"
                         f"💱 Актив: {alt}\n"
-                        f"💵 Сумма: ${adjusted_amount:.2f}\n"
+                        f"💵 Сумма: ${spend_amount:.2f}\n"
                         f"🛡️ Фильтр: {alt_filter['reason']} ×{alt_filter['multiplier']}\n"
                         f"🆔 Ордер: <code>{res['orderId']}</code>\n"
                         f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                     )
                     PnLMonitor().send_telegram_message(buy_message)
-                
-                time.sleep(0.5)
+                # совершаем только одну покупку за цикл
+                break
+        
         # Notify periodically (каждые 5 минут)
         now = time.time()
         if now - self.last_notify_time >= NOTIFY_INTERVAL_SEC and alt_items:
