@@ -19,3 +19,8 @@ market_data_log.txt
 
 # AI analysis files
 full_ai_analysis_*.txt
+
+# Environment variables
+.env
+.env.local
+.env.*
