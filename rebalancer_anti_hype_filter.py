@@ -17,18 +17,22 @@ class RebalancerAntiHypeFilter:
         self.mex_api = MexAPI()
         self.tech_indicators = TechnicalIndicators()
         
-        # Параметры фильтра - МЕНЕЕ СТРОГИЕ ДЛЯ РЕБАЛАНСИРОВКИ
-        self.atr_impulse_multiplier = 3.0  # Более мягкий - 3×ATR вместо 2×
-        self.atr_dca_multiplier = 1.5      # Для DCA на падении
-        self.rsi_overbought = 70           # Более мягкий - 70 вместо 60
-        self.rsi_oversold = 35             # Более мягкий - 35 вместо 40
-        self.rsi_neutral = 55              # Более мягкий - 55 вместо 50
-        self.ema_deviation = 0.03          # Более мягкий - 3% вместо 2%
+        # Параметры фильтра - УСИЛЕНЫ НА 10% ДЛЯ АЛЬТ-СЕЗОНА
+        self.atr_impulse_multiplier = 2.7  # Усилено с 3.0 (более строгая блокировка импульса)
+        self.atr_dca_multiplier = 1.35     # Усилено с 1.5 (более строгий DCA)
+        self.rsi_overbought = 63           # Усилено с 70 (более ранняя блокировка перекупленности)
+        self.rsi_oversold = 38             # Усилено с 35 (более строгий порог перепроданности)
+        self.rsi_neutral = 50              # Усилено с 55 (более строгий нейтральный RSI)
+        self.ema_deviation = 0.027         # Усилено с 0.03 (более строгое отклонение от EMA20)
         
-        # МЕНЕЕ СТРОГИЕ ПАРАМЕТРЫ ПРОТИВ ХАЙПОВ
-        self.max_historical_deviation = 0.02  # 2% от исторического максимума = блокировка (вместо 5%)
-        self.recent_high_threshold = 0.01     # 1% от недавнего максимума = ограничение (вместо 3%)
-        self.volume_hype_threshold = 3.0      # Объем в 3 раза выше среднего = хайп (вместо 2×)
+        # УСИЛЕННЫЕ ПАРАМЕТРЫ ПРОТИВ ХАЙПОВ
+        self.max_historical_deviation = 0.018  # Усилено с 0.02 (более строгая блокировка от исторического максимума)
+        self.recent_high_threshold = 0.009     # Усилено с 0.01 (более строгое ограничение от недавнего максимума)
+        self.volume_hype_threshold = 2.7       # Усилено с 3.0 (более строгая блокировка по объему)
+        
+        # ДОПОЛНИТЕЛЬНЫЙ ФИЛЬТР ПРОТИВ ХАЙПА - ЗАПРЕТ ПОКУПОК БЛИЗКО К ДНЕВНОМУ ХАЮ
+        self.daily_high_safety_margin = 0.05  # 5% безопасная дистанция от дневного хая
+        self.daily_high_block_threshold = 0.03  # 3% от хая = полная блокировка
         
         # Кэш для избежания повторных запросов
         self.cache = {}
@@ -157,6 +161,65 @@ class RebalancerAntiHypeFilter:
             logger.error(f"Ошибка проверки объема: {e}")
             return False
     
+    def _check_daily_high_protection(self, symbol: str, current_price: float) -> Dict:
+        """Проверка защиты от покупок близко к дневному хаю"""
+        try:
+            # Получаем дневные свечи
+            daily_klines = self.mex_api.get_klines(symbol, '1d', 7)
+            if not daily_klines or len(daily_klines) < 1:
+                logger.warning(f"⚠️ Нет дневных свечей для {symbol}")
+                return {'blocked': False, 'reason': 'no_daily_data'}
+            
+            # Находим дневной хай
+            daily_high = max([float(k[2]) for k in daily_klines])  # high price
+            
+            # Рассчитываем расстояние от хая
+            distance_from_high = (daily_high - current_price) / daily_high
+            distance_percent = distance_from_high * 100
+            
+            logger.info(f"📊 {symbol}: дневной хай=${daily_high:.4f}, текущая цена=${current_price:.4f}, дистанция={distance_percent:.2f}%")
+            
+            # Полная блокировка если слишком близко к хаю
+            if distance_from_high < self.daily_high_block_threshold:
+                logger.warning(f"🚫 {symbol}: ПОЛНАЯ БЛОКИРОВКА! Слишком близко к дневному хаю: {distance_percent:.2f}% < {self.daily_high_block_threshold*100:.1f}%")
+                return {
+                    'blocked': True, 
+                    'reason': f'rebalancer_daily_high_too_close_{distance_percent:.1f}%',
+                    'daily_high': daily_high,
+                    'current_price': current_price,
+                    'distance_percent': distance_percent,
+                    'block_type': 'daily_high_full_block'
+                }
+            
+            # Ограничение если близко к хаю
+            if distance_from_high < self.daily_high_safety_margin:
+                logger.warning(f"⚠️ {symbol}: ОГРАНИЧЕНИЕ! Близко к дневному хаю: {distance_percent:.2f}% < {self.daily_high_safety_margin*100:.1f}%")
+                return {
+                    'blocked': False, 
+                    'reason': f'rebalancer_daily_high_close_{distance_percent:.1f}%',
+                    'daily_high': daily_high,
+                    'current_price': current_price,
+                    'distance_percent': distance_percent,
+                    'block_type': 'daily_high_restriction',
+                    'multiplier': 0.2  # Очень сильное ограничение для ребалансировки
+                }
+            
+            # Безопасная зона
+            logger.info(f"✅ {symbol}: Безопасная зона от дневного хая: {distance_percent:.2f}%")
+            return {
+                'blocked': False, 
+                'reason': f'rebalancer_daily_high_safe_{distance_percent:.1f}%',
+                'daily_high': daily_high,
+                'current_price': current_price,
+                'distance_percent': distance_percent,
+                'block_type': 'daily_high_safe',
+                'multiplier': 1.0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки дневного хая для {symbol}: {e}")
+            return {'blocked': False, 'reason': 'daily_high_check_error'}
+    
     def check_buy_permission(self, symbol: str) -> Dict:
         """Проверить разрешение на покупку для ребалансировщика"""
         try:
@@ -165,10 +228,38 @@ class RebalancerAntiHypeFilter:
             klines_4h = self._get_klines_cached(symbol, '4h', 100)  # Используем 4h
             
             if not klines_1h or not klines_4h:
-                return {'allowed': True, 'multiplier': 1.0, 'reason': 'no_data_fallback'}
+                return {
+                    'allowed': True, 
+                    'multiplier': 1.0, 
+                    'reason': 'no_data_fallback',
+                    'daily_high': None,
+                    'current_price': None,
+                    'distance_percent': None,
+                    'block_type': 'no_data_fallback'
+                }
             
             # Рассчитываем индикаторы
             current_price = float(klines_1h[-1][4])
+            
+            # Проверяем защиту от покупок близко к дневному хаю
+            daily_high_protection = self._check_daily_high_protection(symbol, current_price)
+            if daily_high_protection['blocked']:
+                logger.warning(f"🚫 РЕБАЛАНСИРОВКА {symbol}: {daily_high_protection['reason']}")
+                # Формируем результат с информацией о дневном хае для Telegram
+                result = {
+                    'allowed': False, 
+                    'multiplier': 0.0, 
+                    'reason': daily_high_protection['reason'],
+                    'daily_high': daily_high_protection['daily_high'],
+                    'current_price': daily_high_protection['current_price'],
+                    'distance_percent': daily_high_protection['distance_percent'],
+                    'block_type': 'rebalancer_daily_high_full_block'
+                }
+                return result
+            
+            # Применяем множитель от дневного хая если есть ограничение
+            daily_high_multiplier = daily_high_protection.get('multiplier', 1.0)
+            
             atr_4h = self._calculate_atr(klines_4h, 14)
             rsi_1h = self._calculate_rsi(klines_1h, 14)
             ema20_1h = self._calculate_ema(klines_1h, 20)
@@ -194,16 +285,25 @@ class RebalancerAntiHypeFilter:
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'rebalancer_historical_max_block_{current_price:.0f}vs{historical_max:.0f}'
+                    'reason': f'rebalancer_historical_max_block_{current_price:.0f}vs{historical_max:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'historical_max_block'
                 }
             
             # 1. ПРОВЕРКА НЕДАВНЕГО МАКСИМУМА (ОГРАНИЧЕНИЕ) - МЕНЕЕ СТРОГОЕ
             if recent_high > 0 and current_price > recent_high * (1 - self.recent_high_threshold):
+                final_multiplier = 0.5 * daily_high_multiplier
                 logger.warning(f"⚠️ РЕБАЛАНСИРОВКА {symbol}: БЛИЗКО К НЕДАВНЕМУ МАКСИМУМУ! Цена ${current_price:.4f} vs недавний ${recent_high:.4f}")
                 return {
                     'allowed': True, 
-                    'multiplier': 0.5,  # Менее строгое ограничение
-                    'reason': f'rebalancer_recent_high_limit_{current_price:.0f}vs{recent_high:.0f}'
+                    'multiplier': final_multiplier,  # Менее строгое ограничение
+                    'reason': f'rebalancer_recent_high_limit_{current_price:.0f}vs{recent_high:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'recent_high_limit'
                 }
             
             # 2. ПРОВЕРКА ОБЪЕМА ХАЙПА (БЛОКИРОВКА) - МЕНЕЕ СТРОГАЯ
@@ -212,7 +312,11 @@ class RebalancerAntiHypeFilter:
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'rebalancer_volume_hype_block_{self.volume_hype_threshold}x'
+                    'reason': f'rebalancer_volume_hype_block_{self.volume_hype_threshold}x',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'volume_hype_block'
                 }
             
             # 3. ПРОВЕРКА ИМПУЛЬСА ВВЕРХ (блокировка) - МЕНЕЕ СТРОГАЯ
@@ -222,7 +326,11 @@ class RebalancerAntiHypeFilter:
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'rebalancer_hype_block_impulse_{price_change_4h:.1f}%'
+                    'reason': f'rebalancer_hype_block_impulse_{price_change_4h:.1f}%',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'impulse_block'
                 }
             
             # 4. ПРОВЕРКА ПЕРЕКУПЛЕННОСТИ (блокировка) - МЕНЕЕ СТРОГАЯ
@@ -231,7 +339,11 @@ class RebalancerAntiHypeFilter:
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'rebalancer_hype_block_overbought_RSI{rsi_1h:.0f}'
+                    'reason': f'rebalancer_hype_block_overbought_RSI{rsi_1h:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'overbought_block'
                 }
             
             # 5. ПРОВЕРКА МЕДВЕЖЬЕГО ТРЕНДА (блокировка) - МЕНЕЕ СТРОГАЯ
@@ -240,39 +352,66 @@ class RebalancerAntiHypeFilter:
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': 'rebalancer_bear_trend_below_ema200'
+                    'reason': 'rebalancer_bear_trend_below_ema200',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'bear_trend_block'
                 }
             
             # 6. ПРОВЕРКА DCA НА ПАДЕНИИ (усиление) - МЕНЕЕ СТРОГОЕ
             atr_dca_threshold = (atr_4h / current_price) * 100 * self.atr_dca_multiplier
             if price_change_4h < -atr_dca_threshold and rsi_1h < self.rsi_oversold:
-                logger.info(f"🚀 РЕБАЛАНСИРОВКА {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}")
+                final_multiplier = 1.5 * daily_high_multiplier
+                logger.info(f"🚀 РЕБАЛАНСИРОВКА {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
                 return {
                     'allowed': True, 
-                    'multiplier': 1.5, 
-                    'reason': f'rebalancer_dca_boost_fall_{abs(price_change_4h):.1f}%'
+                    'multiplier': final_multiplier, 
+                    'reason': f'rebalancer_dca_boost_fall_{abs(price_change_4h):.1f}%',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'dca_boost'
                 }
             
             # 7. БАЗОВЫЕ ПОКУПКИ (норма) - МЕНЕЕ СТРОГИЕ
             if rsi_1h < self.rsi_neutral:
-                logger.info(f"✅ РЕБАЛАНСИРОВКА {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}")
+                final_multiplier = 1.0 * daily_high_multiplier
+                logger.info(f"✅ РЕБАЛАНСИРОВКА {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
                 return {
                     'allowed': True, 
-                    'multiplier': 1.0, 
-                    'reason': f'rebalancer_normal_buy_RSI{rsi_1h:.0f}'
+                    'multiplier': final_multiplier, 
+                    'reason': f'rebalancer_normal_buy_RSI{rsi_1h:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'normal_buy'
                 }
             
             # 8. НЕЙТРАЛЬНАЯ ЗОНА (умеренное ограничение) - МЕНЕЕ СТРОГОЕ
-            logger.info(f"⚠️ РЕБАЛАНСИРОВКА {symbol}: Нейтральная зона, RSI={rsi_1h:.1f}")
+            final_multiplier = 0.7 * daily_high_multiplier
+            logger.info(f"⚠️ РЕБАЛАНСИРОВКА {symbol}: Нейтральная зона, RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
             return {
                 'allowed': True, 
-                'multiplier': 0.7,  # Менее строгое ограничение
-                'reason': f'rebalancer_neutral_zone_RSI{rsi_1h:.0f}'
+                'multiplier': final_multiplier,  # Менее строгое ограничение
+                'reason': f'rebalancer_neutral_zone_RSI{rsi_1h:.0f}',
+                'daily_high': daily_high_protection.get('daily_high'),
+                'current_price': current_price,
+                'distance_percent': daily_high_protection.get('distance_percent'),
+                'block_type': 'neutral_zone'
             }
             
         except Exception as e:
             logger.error(f"❌ Ошибка анти-хайп фильтра ребалансировщика для {symbol}: {e}")
-            return {'allowed': True, 'multiplier': 1.0, 'reason': 'rebalancer_error_fallback'}
+            return {
+                'allowed': True, 
+                'multiplier': 1.0, 
+                'reason': 'rebalancer_error_fallback',
+                'daily_high': None,
+                'current_price': None,
+                'distance_percent': None,
+                'block_type': 'rebalancer_error_fallback'
+            }
     
     def get_filter_status(self, symbols: List[str]) -> Dict:
         """Получить статус фильтра для нескольких символов"""

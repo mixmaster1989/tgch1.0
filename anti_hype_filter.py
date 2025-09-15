@@ -17,13 +17,17 @@ class AntiHypeFilter:
         self.mex_api = MexAPI()
         self.tech_indicators = TechnicalIndicators()
         
-        # Параметры фильтра
-        self.atr_impulse_multiplier = 3.0  # Для блокировки импульса вверх
-        self.atr_dca_multiplier = 2.0      # Для DCA на падении
-        self.rsi_overbought = 65           # Порог перекупленности
-        self.rsi_oversold = 45             # Порог перепроданности
-        self.rsi_neutral = 55              # Нейтральный RSI
-        self.ema_deviation = 0.03          # 3% отклонение от EMA20
+        # Параметры фильтра - УСИЛЕНЫ НА 10% ДЛЯ АЛЬТ-СЕЗОНА
+        self.atr_impulse_multiplier = 2.7  # Усилено с 3.0 (более строгая блокировка импульса)
+        self.atr_dca_multiplier = 1.8      # Усилено с 2.0 (более строгий DCA)
+        self.rsi_overbought = 58           # Усилено с 65 (более ранняя блокировка перекупленности)
+        self.rsi_oversold = 50             # Усилено с 45 (более строгий порог перепроданности)
+        self.rsi_neutral = 50              # Усилено с 55 (более строгий нейтральный RSI)
+        self.ema_deviation = 0.027         # Усилено с 0.03 (более строгое отклонение от EMA20)
+        
+        # ДОПОЛНИТЕЛЬНЫЙ ФИЛЬТР ПРОТИВ ХАЙПА - ЗАПРЕТ ПОКУПОК БЛИЗКО К ДНЕВНОМУ ХАЮ
+        self.daily_high_safety_margin = 0.05  # 5% безопасная дистанция от дневного хая
+        self.daily_high_block_threshold = 0.03  # 3% от хая = полная блокировка
         
         # Кэш для избежания повторных запросов
         self.cache = {}
@@ -150,6 +154,65 @@ class AntiHypeFilter:
         cache_key = f"result_{symbol}"
         self.result_cache[cache_key] = (time.time(), result)
     
+    def _check_daily_high_protection(self, symbol: str, current_price: float) -> Dict:
+        """Проверка защиты от покупок близко к дневному хаю"""
+        try:
+            # Получаем дневные свечи
+            daily_klines = self._get_klines_cached(symbol, '1d', 7)
+            if not daily_klines or len(daily_klines) < 1:
+                logger.warning(f"⚠️ Нет дневных свечей для {symbol}")
+                return {'blocked': False, 'reason': 'no_daily_data'}
+            
+            # Находим дневной хай
+            daily_high = max([float(k[2]) for k in daily_klines])  # high price
+            
+            # Рассчитываем расстояние от хая
+            distance_from_high = (daily_high - current_price) / daily_high
+            distance_percent = distance_from_high * 100
+            
+            logger.info(f"📊 {symbol}: дневной хай=${daily_high:.4f}, текущая цена=${current_price:.4f}, дистанция={distance_percent:.2f}%")
+            
+            # Полная блокировка если слишком близко к хаю
+            if distance_from_high < self.daily_high_block_threshold:
+                logger.warning(f"🚫 {symbol}: ПОЛНАЯ БЛОКИРОВКА! Слишком близко к дневному хаю: {distance_percent:.2f}% < {self.daily_high_block_threshold*100:.1f}%")
+                return {
+                    'blocked': True, 
+                    'reason': f'daily_high_too_close_{distance_percent:.1f}%',
+                    'daily_high': daily_high,
+                    'current_price': current_price,
+                    'distance_percent': distance_percent,
+                    'block_type': 'full_block'
+                }
+            
+            # Ограничение если близко к хаю
+            if distance_from_high < self.daily_high_safety_margin:
+                logger.warning(f"⚠️ {symbol}: ОГРАНИЧЕНИЕ! Близко к дневному хаю: {distance_percent:.2f}% < {self.daily_high_safety_margin*100:.1f}%")
+                return {
+                    'blocked': False, 
+                    'reason': f'daily_high_close_{distance_percent:.1f}%',
+                    'daily_high': daily_high,
+                    'current_price': current_price,
+                    'distance_percent': distance_percent,
+                    'block_type': 'restriction',
+                    'multiplier': 0.3  # Сильное ограничение
+                }
+            
+            # Безопасная зона
+            logger.info(f"✅ {symbol}: Безопасная зона от дневного хая: {distance_percent:.2f}%")
+            return {
+                'blocked': False, 
+                'reason': f'daily_high_safe_{distance_percent:.1f}%',
+                'daily_high': daily_high,
+                'current_price': current_price,
+                'distance_percent': distance_percent,
+                'block_type': 'safe',
+                'multiplier': 1.0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки дневного хая для {symbol}: {e}")
+            return {'blocked': False, 'reason': 'daily_high_check_error'}
+    
     def check_buy_permission(self, symbol: str) -> Dict:
         """Основная функция проверки разрешения на покупку"""
         # Проверяем кэш результатов
@@ -180,6 +243,26 @@ class AntiHypeFilter:
             # Текущая цена
             current_price = float(klines_1h[-1][4])
             
+            # Проверяем защиту от покупок близко к дневному хаю
+            daily_high_protection = self._check_daily_high_protection(symbol, current_price)
+            if daily_high_protection['blocked']:
+                logger.warning(f"🚫 {symbol}: {daily_high_protection['reason']}")
+                # Формируем результат с информацией о дневном хае для Telegram
+                result = {
+                    'allowed': False, 
+                    'multiplier': 0.0, 
+                    'reason': daily_high_protection['reason'],
+                    'daily_high': daily_high_protection['daily_high'],
+                    'current_price': daily_high_protection['current_price'],
+                    'distance_percent': daily_high_protection['distance_percent'],
+                    'block_type': 'daily_high_full_block'
+                }
+                self._cache_result(symbol, result)
+                return result
+            
+            # Применяем множитель от дневного хая если есть ограничение
+            daily_high_multiplier = daily_high_protection.get('multiplier', 1.0)
+            
             # Рассчитываем индикаторы
             atr_4h = self._calculate_atr(klines_4h, 14)
             rsi_1h = self._calculate_rsi(klines_1h, 14)
@@ -198,7 +281,11 @@ class AntiHypeFilter:
                 result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'hype_block_impulse_{price_change_4h:.1f}%'
+                    'reason': f'hype_block_impulse_{price_change_4h:.1f}%',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'impulse_block'
                 }
                 logger.warning(f"🚫 {symbol}: Импульс вверх {price_change_4h:.2f}% > {atr_threshold:.2f}% (3×ATR)")
                 self._cache_result(symbol, result)
@@ -209,7 +296,11 @@ class AntiHypeFilter:
                 result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'hype_block_overbought_RSI{rsi_1h:.0f}'
+                    'reason': f'hype_block_overbought_RSI{rsi_1h:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'overbought_block'
                 }
                 logger.warning(f"🚫 {symbol}: Перекупленность RSI={rsi_1h:.1f} и цена выше EMA20+3%")
                 self._cache_result(symbol, result)
@@ -220,7 +311,11 @@ class AntiHypeFilter:
                 result = {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': 'bear_trend_below_ema200'
+                    'reason': 'bear_trend_below_ema200',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'bear_trend_block'
                 }
                 logger.warning(f"🚫 {symbol}: Цена ниже EMA200 (медвежий тренд)")
                 self._cache_result(symbol, result)
@@ -229,39 +324,62 @@ class AntiHypeFilter:
             # 4. ПРОВЕРКА DCA НА ПАДЕНИИ (усиление)
             atr_dca_threshold = (atr_4h / current_price) * 100 * self.atr_dca_multiplier
             if price_change_4h < -atr_dca_threshold and rsi_1h < self.rsi_oversold:
+                final_multiplier = 2.0 * daily_high_multiplier
                 result = {
                     'allowed': True, 
-                    'multiplier': 2.0, 
-                    'reason': f'dca_boost_fall_{abs(price_change_4h):.1f}%'
+                    'multiplier': final_multiplier, 
+                    'reason': f'dca_boost_fall_{abs(price_change_4h):.1f}%',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'dca_boost'
                 }
-                logger.info(f"🚀 {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}")
+                logger.info(f"🚀 {symbol}: DCA усиление! Падение {price_change_4h:.2f}% и RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
                 self._cache_result(symbol, result)
                 return result
             
             # 5. БАЗОВЫЕ ПОКУПКИ (норма)
             if rsi_1h < self.rsi_neutral:
+                final_multiplier = 1.0 * daily_high_multiplier
                 result = {
                     'allowed': True, 
-                    'multiplier': 1.0, 
-                    'reason': f'normal_buy_RSI{rsi_1h:.0f}'
+                    'multiplier': final_multiplier, 
+                    'reason': f'normal_buy_RSI{rsi_1h:.0f}',
+                    'daily_high': daily_high_protection.get('daily_high'),
+                    'current_price': current_price,
+                    'distance_percent': daily_high_protection.get('distance_percent'),
+                    'block_type': 'normal_buy'
                 }
-                logger.info(f"✅ {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}")
+                logger.info(f"✅ {symbol}: Нормальная покупка, RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
                 self._cache_result(symbol, result)
                 return result
             
             # 6. НЕЙТРАЛЬНАЯ ЗОНА (небольшое ограничение)
-            logger.info(f"⚠️ {symbol}: Нейтральная зона, RSI={rsi_1h:.1f}")
+            final_multiplier = 0.7 * daily_high_multiplier
+            logger.info(f"⚠️ {symbol}: Нейтральная зона, RSI={rsi_1h:.1f}, множитель={final_multiplier:.2f}")
             result = {
                 'allowed': True, 
-                'multiplier': 0.7, 
-                'reason': f'neutral_zone_RSI{rsi_1h:.0f}'
+                'multiplier': final_multiplier, 
+                'reason': f'neutral_zone_RSI{rsi_1h:.0f}',
+                'daily_high': daily_high_protection.get('daily_high'),
+                'current_price': current_price,
+                'distance_percent': daily_high_protection.get('distance_percent'),
+                'block_type': 'neutral_zone'
             }
             self._cache_result(symbol, result)
             return result
             
         except Exception as e:
             logger.error(f"❌ Ошибка анти-хайп фильтра для {symbol}: {e}")
-            result = {'allowed': True, 'multiplier': 1.0, 'reason': 'error_fallback'}
+            result = {
+                'allowed': True, 
+                'multiplier': 1.0, 
+                'reason': 'error_fallback',
+                'daily_high': None,
+                'current_price': None,
+                'distance_percent': None,
+                'block_type': 'error_fallback'
+            }
             self._cache_result(symbol, result)
             return result
     

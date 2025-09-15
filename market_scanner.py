@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from mex_api import MexAPI
 from technical_indicators import TechnicalIndicators
 from anti_hype_filter import AntiHypeFilter
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, EXCLUDED_SYMBOLS
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +41,9 @@ class MarketScanner:
         # Статистика
         self.scan_count = 0
         self.last_scan_time = None
+        
+        # Контроль частоты отчетов (уменьшаем спам в 2 раза)
+        self.report_counter = 0
         
     def send_telegram_message(self, message: str):
         """Отправить сообщение в Telegram"""
@@ -145,8 +148,10 @@ class MarketScanner:
             # Берем топ пар
             top_pairs = [pair['symbol'] for pair in usdt_pairs[:limit]]
             
-            # ИСКЛЮЧАЕМ BTCUSDT и ETHUSDT
-            top_pairs = [s for s in top_pairs if s not in ('BTCUSDT', 'ETHUSDT')]
+            # Исключаем символы из глобального списка EXCLUDED_SYMBOLS
+            if EXCLUDED_SYMBOLS:
+                excluded_set = set(EXCLUDED_SYMBOLS)
+                top_pairs = [s for s in top_pairs if s not in excluded_set]
             
             logger.info(f"✅ Получено {len(top_pairs)} торговых пар")
             logger.info(f"📊 Топ-5 по объему: {top_pairs[:5]}")
@@ -171,8 +176,10 @@ class MarketScanner:
         """Обновить список торговых пар"""
         try:
             self.trading_pairs = self.get_top_trading_pairs(self.max_pairs)
-            # Дополнительная страховка: исключаем BTCUSDT и ETHUSDT, если вдруг попали
-            self.trading_pairs = [s for s in self.trading_pairs if s not in ('BTCUSDT', 'ETHUSDT')]
+            # Дополнительная страховка: исключаем символы из EXCLUDED_SYMBOLS, если вдруг попали
+            if EXCLUDED_SYMBOLS:
+                excluded_set = set(EXCLUDED_SYMBOLS)
+                self.trading_pairs = [s for s in self.trading_pairs if s not in excluded_set]
             logger.info(f"🔄 Список торговых пар обновлен: {len(self.trading_pairs)} пар")
         except Exception as e:
             logger.error(f"Ошибка обновления торговых пар: {e}")
@@ -402,31 +409,37 @@ class MarketScanner:
             
             logger.debug(f"🔄 Сканирование #{self.scan_count}...")
             
-            # Не сканируем рынок, если баланс USDT < $6
+            # Проверяем баланс USDT в начале каждого цикла
             try:
                 usdt_balance = self.get_usdt_balance()
             except Exception:
                 usdt_balance = 0.0
+            
+            # Если баланс недостаточный - пропускаем сканирование, но НЕ останавливаем цикл
             if usdt_balance < 6.0:
-                logger.info(f"⏭️ Пропуск сканирования: USDT=${usdt_balance:.2f} < $6.00")
-                return
-            
-            # Сканируем рынок
-            scan_results = self.scan_market()
-            
-            if scan_results:
-                # Форматируем отчет
-                report = self.format_scan_report(scan_results)
-                
-                # Отправляем в Telegram
-                self.send_telegram_message(report)
-                
-                # АВТОМАТИЧЕСКАЯ ПОКУПКА
-                await self.auto_buy_opportunities(scan_results)
-                
-                logger.debug(f"✅ Отчет #{self.scan_count} отправлен в Telegram")
+                logger.info(f"⏭️ Пропуск сканирования: USDT=${usdt_balance:.2f} < $6.00 (экономия API лимитов)")
+                # Пропускаем сканирование, но продолжаем цикл
+                pass
             else:
-                logger.error("❌ Ошибка сканирования рынка")
+                # Сканируем рынок только при достаточном балансе
+                scan_results = self.scan_market()
+                
+                if scan_results:
+                    # Форматируем отчет
+                    report = self.format_scan_report(scan_results)
+                    
+                    # Отправляем в Telegram (каждые 10 минут вместо 5)
+                    self.report_counter += 1
+                    if self.report_counter % 2 == 0:  # Отправляем каждый второй отчет
+                        self.send_telegram_message(report)
+                        logger.info(f"📊 Отчет #{self.scan_count} отправлен в Telegram")
+                    else:
+                        logger.info(f"📊 Отчет #{self.scan_count} пропущен (уменьшение спама)")
+                    
+                    # АВТОМАТИЧЕСКАЯ ПОКУПКА
+                    await self.auto_buy_opportunities(scan_results)
+                else:
+                    logger.error("❌ Ошибка сканирования рынка")
                 
         except Exception as e:
             logger.error(f"Ошибка цикла сканирования: {e}")

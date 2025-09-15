@@ -63,6 +63,7 @@ class StablecoinBalancer:
         # Проверяем минимальные требования для покупки BTC/ETH
         min_btc_requirement = 12.0  # Минимум для BTC
         min_eth_requirement = 5.0   # Минимум для ETH
+        min_scalper_protection = 20.0  # Защита $20 USDC для скальперов
         
         if usdt_diff > 0:
             # USDT больше - конвертируем в USDC

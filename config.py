@@ -41,9 +41,20 @@ AI_EXPERT_MODELS = {
 AI_JUDGE_MODEL = "anthropic/claude-opus-4"
 ANALYSIS_INTERVAL = 300  # seconds
 
+# Symbols to exclude from market scanning globally
+# Extend this list to disable noisy/illiquid pairs from scanner reports and auto-buys
+EXCLUDED_SYMBOLS = [
+    # База: не сканируем мажоры (уже исключались ранее)
+    'BTCUSDT', 'ETHUSDT',
+    # Из беседы: балласт/микро‑позиции и слабые проекты — исключить из сканера
+    'PUADUSDT', 'DREYAIUSDT', 'LUMAUSDT', 'SUPRAUSDT', 'NOTUSDT', 'ACAUSDT',
+    'KERNELUSDT', 'SAPIENUSDT', 'XLMUSDT', 'NEXOUSDT', 'CUSDT', 'THEUSDT',
+    'XNYUSDT', 'SENDUSDT', 'RSRUSDT'
+]
+
 # PnL Monitor Configuration
 PNL_MONITOR_CONFIG = {
-    'profit_threshold': 0.15,  # Снижено с 0.40 до 0.15 (15 центов)
+    'profit_threshold': 0.07,  # Снижено с 0.15 до 0.07 (7 центов) для подвижного аккаунта
     'check_interval': 60,      # Проверка каждую минуту (не меняем)
     'notification_interval': 600,  # Уведомления каждые 10 минут (увеличено в 2 раза)
     'trading_pairs': ['BTCUSDC', 'ETHUSDC'],

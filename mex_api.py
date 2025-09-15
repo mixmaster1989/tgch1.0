@@ -114,25 +114,25 @@ class MexAPI:
     
     def get_klines(self, symbol: str, interval: str = '1m', limit: int = 100) -> List:
         """Получить данные свечей с оптимизированным выбором API"""
-        # Интервалы, которые лучше работают через v2
-        v2_intervals = {'1m', '5m', '15m', '30m', '60m', '1h', '4h', '8h', '1d', '1w'}
+        # Маппинг интервалов для MEXC API
+        interval_map = {
+            '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
+            '1h': '60m', '4h': '4h', '8h': '8h', '1d': '1d', '1w': '1w'
+        }
+        mapped_interval = interval_map.get(interval, interval)
         
-        # Если интервал лучше работает через v2, используем его сразу
-        if interval in v2_intervals:
-            return self._get_klines_v2(symbol, interval, limit)
-        
-        # Для остальных интервалов пробуем v3, потом fallback на v2
+        # Сначала пробуем V3 API (работает для всех пар)
         url = f"{self.base_url}/api/v3/klines"
         params = {
             'symbol': symbol,
-            'interval': interval,
+            'interval': mapped_interval,
             'limit': limit
         }
         result = self._make_request_with_retry('GET', url, params=params)
         if isinstance(result, list) and result:
             return result
         
-        # Fallback на v2
+        # Fallback на v2 только если V3 не сработал
         return self._get_klines_v2(symbol, interval, limit)
     
     def _get_klines_v2(self, symbol: str, interval: str, limit: int) -> List:
@@ -162,15 +162,39 @@ class MexAPI:
             logger.warning(f"V2 get_klines ошибка для {symbol}: {e}")
         return []
     
+    def _round_quantity(self, symbol: str, quantity: float) -> float:
+        """Округлить количество согласно правилам биржи MEX"""
+        # Получаем информацию о символе для правильного округления
+        try:
+            exchange_info = self.get_exchange_info()
+            if isinstance(exchange_info, dict) and 'symbols' in exchange_info:
+                for symbol_info in exchange_info['symbols']:
+                    if symbol_info['symbol'] == symbol:
+                        # Находим фильтр LOT_SIZE
+                        for filter_info in symbol_info['filters']:
+                            if filter_info['filterType'] == 'LOT_SIZE':
+                                step_size = float(filter_info['stepSize'])
+                                # Округляем до ближайшего шага
+                                precision = len(str(step_size).split('.')[-1].rstrip('0'))
+                                return round(quantity, precision)
+        except Exception as e:
+            logger.warning(f"Ошибка получения информации о символе {symbol}: {e}")
+        
+        # Fallback: округляем до 6 знаков после запятой
+        return round(quantity, 6)
+    
     def place_order(self, symbol: str, side: str, quantity: float, price: Optional[float] = None) -> Dict:
         """Разместить ордер"""
         timestamp = int(time.time() * 1000)
+        
+        # Правильно округляем количество
+        rounded_quantity = self._round_quantity(symbol, quantity)
         
         params = {
             'symbol': symbol,
             'side': side,
             'type': 'MARKET' if price is None else 'LIMIT',
-            'quantity': quantity,
+            'quantity': rounded_quantity,
             'timestamp': timestamp
         }
         

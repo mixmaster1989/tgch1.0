@@ -6,6 +6,7 @@ MEX Trading Bot - Главный файл запуска
 
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 from native_trader_bot import NativeTraderBot
 from startup_dashboard import StartupDashboard
@@ -17,13 +18,14 @@ from alt_monitor import AltsMonitor
 # from stablecoin_balancer import StablecoinBalancer
 from market_scanner import MarketScanner
 from orders_reporter import OrdersReporter
+from active_50_50_balancer import Active5050Balancer
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
+        RotatingFileHandler('bot.log', maxBytes=20 * 1024 * 1024, backupCount=5, encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -95,6 +97,33 @@ def start_pnl_monitor():
         
     except Exception as e:
         logger.error(f"❌ Ошибка запуска PnL монитора: {e}")
+
+    """Запуск менеджера скальперов в отдельном потоке"""
+    try:
+        logger.info("🚀 Запуск менеджера скальперов...")
+        
+        # Создаем менеджер скальперов
+        scalper_manager = ScalperManager()
+        
+        # Отправляем информацию о настройках
+        logger.info("📊 Настройки менеджера скальперов:")
+        logger.info(f"   Защита баланса: ${scalper_manager.min_usdc_balance_after_scalper:.2f} USDC")
+        logger.info(f"   Размер позиции: ${scalper_manager.position_size_usdc:.2f} USDC")
+        logger.info(f"   Максимум экземпляров: {scalper_manager.max_instances_per_symbol} на символ")
+        logger.info(f"   Минимальное время застревания: {scalper_manager.min_stuck_time/3600:.1f} часов")
+        logger.info(f"   Интервал проверки: {scalper_manager.scan_interval} сек")
+        
+        # Запускаем менеджер в отдельном потоке
+        def run_scalper_manager():
+            asyncio.run(scalper_manager.run())
+        
+        manager_thread = threading.Thread(target=run_scalper_manager, daemon=True)
+        manager_thread.start()
+        
+        logger.info("✅ Менеджер скальперов запущен в отдельном потоке")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска менеджера скальперов: {e}")
 
 def start_market_scanner():
     """Запуск сканера рынка в отдельном потоке"""
@@ -168,6 +197,30 @@ def main():
         except Exception as e:
             logger.error(f"❌ Ошибка запуска репортера ордеров: {e}")
 
+        # Репортер скальперов отключен - теперь используется ежечасный отчет в менеджере
+        # scalpers_reporter = ScalpersReporter()
+        # def run_scalpers_reporter():
+        #     scalpers_reporter.start()
+        # t = threading.Thread(target=run_scalpers_reporter, daemon=True)
+        # t.start()
+        # logger.info("✅ Репортер скальперов запущен в отдельном потоке")
+
+        # Запускаем активный балансировщик 50/50
+        try:
+            logger.info("🚀 Запуск активного балансировщика 50/50...")
+            active_balancer = Active5050Balancer()
+            def run_active_balancer():
+                asyncio.run(active_balancer.start_monitoring())
+            t = threading.Thread(target=run_active_balancer, daemon=True)
+            t.start()
+            logger.info("✅ Активный балансировщик 50/50 запущен в отдельном потоке")
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска активного балансировщика 50/50: {e}")
+
+        # Скальперы теперь управляются менеджером скальперов
+
+        # Запускаем менеджер скальперов
+
         # (Отключено) Запуск балансировщика стейблкоинов
         # try:
         #     logger.info("🚀 Запуск балансировщика USDT/USDC...")
@@ -185,6 +238,11 @@ def main():
         logger.info("   📈 Автоматические покупки BTC/ETH")
         logger.info("   📊 PnL мониторинг с автопродажей")
         logger.info("   🧩 Мониторинг альтов (порог $0.15)")
+        logger.info("   ⚖️ Активный балансировщик 50/50 (каждые 10 сек)")
+        logger.info("   🎯 Менеджер скальперов (запускает множественные экземпляры)")
+        logger.info("   ⚡ BTC скальперы (управляются менеджером, множественные экземпляры)")
+        logger.info("   ⚡ ETH скальперы (управляются менеджером, множественные экземпляры)")
+        logger.info("   📊 Ежечасный отчет скальперов (реальная статистика)")
         # logger.info("   ⚖️ Балансировщик USDT/USDC (каждый час)")
         logger.info("   🤖 Telegram бот")
         

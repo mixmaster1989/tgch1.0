@@ -747,26 +747,73 @@ class NativeTraderBot:
         
         # Запускаем фоновую задачу для периодической активности
         async def run_with_activity():
-            # Запускаем планировщик активности
-            activity_task = asyncio.create_task(self.activity_loop())
-            
-            # Запускаем бота
-            await self.app.initialize()
-            await self.app.start()
-            await self.app.updater.start_polling()
-            
             try:
-                # Ждем завершения активности
-                await activity_task
-            except KeyboardInterrupt:
-                print("Остановка бота...")
-            finally:
-                await self.app.updater.stop()
-                await self.app.stop()
-                await self.app.shutdown()
+                # Сначала удаляем webhook если он есть
+                try:
+                    await self.app.bot.delete_webhook()
+                    print("✅ Webhook удален")
+                except Exception as e:
+                    print(f"⚠️ Ошибка удаления webhook: {e}")
+                
+                # Запускаем планировщик активности
+                activity_task = asyncio.create_task(self.activity_loop())
+                
+                # Запускаем бота с обработкой ошибок
+                await self.app.initialize()
+                await self.app.start()
+                
+                # Настраиваем обработку ошибок для polling
+                self.app.updater.error_callback = self.handle_polling_error
+                
+                await self.app.updater.start_polling(
+                    drop_pending_updates=True,  # Игнорируем старые сообщения
+                    allowed_updates=['message', 'callback_query']  # Только нужные типы
+                )
+                
+                print("✅ Telegram бот запущен успешно")
+                
+                try:
+                    # Ждем завершения активности
+                    await activity_task
+                except KeyboardInterrupt:
+                    print("Остановка бота...")
+                finally:
+                    await self.app.updater.stop()
+                    await self.app.stop()
+                    await self.app.shutdown()
+                    
+            except Exception as e:
+                print(f"❌ Критическая ошибка запуска бота: {e}")
+                # Пытаемся очистить ресурсы
+                try:
+                    await self.app.updater.stop()
+                    await self.app.stop()
+                    await self.app.shutdown()
+                except:
+                    pass
+                raise
         
         # Запускаем асинхронную функцию
         asyncio.run(run_with_activity())
+    
+    async def handle_polling_error(self, update, context):
+        """Обработка ошибок polling"""
+        error = context.error
+        if "Conflict" in str(error):
+            print(f"⚠️ Конфликт Telegram бота: {error}")
+            # Пытаемся перезапустить polling
+            try:
+                await self.app.updater.stop()
+                await asyncio.sleep(5)
+                await self.app.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=['message', 'callback_query']
+                )
+                print("✅ Polling перезапущен после конфликта")
+            except Exception as e:
+                print(f"❌ Ошибка перезапуска polling: {e}")
+        else:
+            print(f"❌ Ошибка Telegram бота: {error}")
     
     async def activity_loop(self):
         """Цикл автоматической активности"""

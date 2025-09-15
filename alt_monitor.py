@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 TOP5_ALTS = ['BNB', 'SOL', 'XRP', 'ADA', 'DOGE']
 SELL_THRESHOLD_USD = 0.15  # Снижено с 0.20 до 0.15
 CHECK_INTERVAL_SEC = 60
-NOTIFY_INTERVAL_SEC = 300
+NOTIFY_INTERVAL_SEC = 3600  # 1 час (изменено с 300 сек на 3600 сек)
 
 class AltsMonitor:
     def __init__(self):

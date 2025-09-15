@@ -6,6 +6,7 @@
 
 # Настройки
 BOT_NAME="mexca_trading_bot"
+LOG_DIR="logs"
 LOG_FILE="trading_bot.log"
 PID_FILE="trading_bot.pid"
 PYTHON_SCRIPT="run_auto_trader.py"
@@ -27,18 +28,18 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 # Создаем директорию для логов если её нет
-mkdir -p logs
+mkdir -p "$LOG_DIR"
 
 # Запускаем бота в фоновом режиме с nohup
 echo "📈 Запуск торгового бота..."
-nohup python3 "$PYTHON_SCRIPT" > "logs/$LOG_FILE" 2>&1 &
+nohup python3 "$PYTHON_SCRIPT" > "$LOG_DIR/$LOG_FILE" 2>&1 &
 
 # Сохраняем PID
 echo $! > "$PID_FILE"
 PID=$(cat "$PID_FILE")
 
 echo "✅ Бот запущен с PID: $PID"
-echo "📁 Логи: logs/$LOG_FILE"
+echo "📁 Логи: $LOG_DIR/$LOG_FILE"
 echo "🆔 PID файл: $PID_FILE"
 echo ""
 echo "📱 Проверяйте Telegram для уведомлений!"
@@ -46,6 +47,11 @@ echo ""
 echo "🔧 Команды управления:"
 echo "  Остановка: ./stop_trading_daemon.sh"
 echo "  Статус: ./status_trading_daemon.sh"
-echo "  Логи: tail -f logs/$LOG_FILE"
+echo "  Логи: tail -f $LOG_DIR/$LOG_FILE"
 echo ""
 echo "🌙 Можете выключать ноут - бот продолжит работать!" 
+
+# Обрезаем лог до 100MB, чтобы не разрастался
+if [ -x "./scripts/trim_log.sh" ]; then
+  ./scripts/trim_log.sh "$LOG_DIR/$LOG_FILE" 104857600 || true
+fi 

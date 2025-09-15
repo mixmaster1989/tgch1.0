@@ -17,11 +17,9 @@ module.exports = {
     log_file: './logs/combined.log',
     time: true,
     log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    // Дополнительные настройки для автоматических покупок
     kill_timeout: 10000,
     wait_ready: true,
     listen_timeout: 10000,
-    // Переменные окружения для автоматических покупок
     env_production: {
       AUTO_PURCHASE_ENABLED: 'true',
       MIN_BALANCE_THRESHOLD: '10.0',

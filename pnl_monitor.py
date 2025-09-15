@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Мониторинг PnL с автоматической продажей при прибыли более 15 центов
+Мониторинг PnL с автоматической продажей при прибыли более 7 центов
+Для подвижного аккаунта - быстрые сделки!
 """
 
 from mex_api import MexAPI
+import asyncio
 import time
 import logging
 import requests
@@ -12,6 +14,7 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, PNL_MONITOR_CONFIG
 from portfolio_balancer import PortfolioBalancer
 from mexc_advanced_api import MexAdvancedAPI
 from post_sale_balancer import PostSaleBalancer
+from logging.handlers import RotatingFileHandler
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -38,9 +41,17 @@ class PnLMonitor:
         self.last_balance_check = 0
         self.balance_check_interval = 3600  # Проверка балансировки каждый час
         
+        # Контроль частоты отчетов (уменьшаем спам в 2 раза)
+        self.report_counter = 0
+        
         # Настройка файлового логирования
         if PNL_MONITOR_CONFIG['file_logging']:
-            file_handler = logging.FileHandler(PNL_MONITOR_CONFIG['log_file'], encoding='utf-8')
+            file_handler = RotatingFileHandler(
+                PNL_MONITOR_CONFIG['log_file'],
+                maxBytes=20 * 1024 * 1024,
+                backupCount=5,
+                encoding='utf-8'
+            )
             file_handler.setLevel(logging.INFO)
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             file_handler.setFormatter(formatter)
@@ -528,7 +539,7 @@ class PnLMonitor:
         except Exception as e:
             logger.error(f"❌ Ошибка проверки балансировки: {e}")
     
-    def check_portfolio_balance_sync(self):
+    async def check_portfolio_balance_sync(self):
         """Синхронная версия проверки балансировки портфеля"""
         try:
             current_time = time.time()
@@ -568,7 +579,7 @@ class PnLMonitor:
                 return
             
             # Выполняем синхронную балансировку
-            result = self.portfolio_balancer.execute_portfolio_rebalance_sync()
+            result = await self.portfolio_balancer.execute_portfolio_rebalance()
             
             # Отправляем отчет
             if result['success'] or result.get('reason') != 'not_needed':
@@ -819,7 +830,7 @@ class PnLMonitor:
                             else:
                                 logger.error(f"❌ Ошибка продажи {asset}")
                         else:
-                            logger.info(f"📈 PnL {asset}: ${pnl:.4f} (порог: ${self.profit_threshold})")
+                            logger.info(f"📈 PnL {asset}: ${pnl:.4f} (порог: ${self.profit_threshold} - 7 центов)")
                             
                             # Сохраняем данные для уведомления
                             pnl_data.append({
@@ -846,16 +857,23 @@ class PnLMonitor:
                     portfolio_value = 0.0
                 
                 # Общая стоимость портфеля (включая стейблкоины)
+                usdt_balance = 0.0
+                usdc_balance = 0.0
+                total_portfolio = 0.0
+                
                 try:
                     account_info = self.mex_api.get_account_info()
-                    total_portfolio = 0.0
                     if account_info and 'balances' in account_info:
                         for balance in account_info['balances']:
                             asset = balance['asset']
                             total = float(balance.get('free', 0)) + float(balance.get('locked', 0))
                             if total <= 0:
                                 continue
-                            if asset in ['USDT', 'USDC']:
+                            if asset == 'USDT':
+                                usdt_balance = total
+                                total_portfolio += total
+                            elif asset == 'USDC':
+                                usdc_balance = total
                                 total_portfolio += total
                             else:
                                 try:
@@ -865,27 +883,38 @@ class PnLMonitor:
                                 except Exception:
                                     pass
                 except Exception:
-                    total_portfolio = 0.0
+                    pass
                 
                 message_lines = [
                     "📊 <b>ПОРТФЕЛЬ BTC/ETH</b>\n",
                     f"💎 <b>СТОИМОСТЬ ПОРТФЕЛЯ</b>: <code>${portfolio_value:.2f}</code>\n",
-                    f"🏦 <b>ОБЩАЯ СТОИМОСТЬ</b>: <code>${total_portfolio:.2f}</code>\n\n"
+                    f"🏦 <b>ОБЩАЯ СТОИМОСТЬ</b>: <code>${total_portfolio:.2f}</code>\n\n",
+                    f"💵 <b>СТАБИЛЬНЫЕ МОНЕТЫ:</b>\n",
+                    f"   💰 USDT: ${usdt_balance:.2f}\n",
+                    f"   💰 USDC: ${usdc_balance:.2f}\n\n"
                 ]
                 for item in pnl_data:
                     pnl_status = "📈" if item['pnl'] > 0 else "📉" if item['pnl'] < 0 else "➡️"
                     message_lines.append(
                         f"{pnl_status} <b>{item['asset']}</b>:\n"
                         f"   📊 {item['quantity']:.6f} @ ${item['current_price']:.4f}\n"
-                        f"   💵 PnL: ${item['pnl']:.4f} (порог: $0.15)\n\n"
+                        f"   💵 PnL: ${item['pnl']:.4f} (порог: $0.07)\n\n"
                     )
                 message_lines.append(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
-                self.send_telegram_message("".join(message_lines))
+                
+                # Отправляем отчет (каждые 2 часа вместо 1 часа)
+                self.report_counter += 1
+                if self.report_counter % 2 == 0:  # Отправляем каждый второй отчет
+                    self.send_telegram_message("".join(message_lines))
+                    logger.info("📊 Отчет PnL отправлен в Telegram")
+                else:
+                    logger.info("📊 Отчет PnL пропущен (уменьшение спама)")
+                
                 self.last_summary_time = current_time
         except Exception as e:
             logger.error(f"❌ Ошибка проверки PnL: {e}")
     
-    def start_monitoring(self):
+    async def start_monitoring(self):
         """Запустить мониторинг PnL"""
         try:
             logger.info("🚀 Запуск мониторинга PnL...")
@@ -894,7 +923,7 @@ class PnLMonitor:
             start_message = (
                 f"📊 <b>МОНИТОРИНГ PnL ЗАПУЩЕН</b>\n\n"
                 f"🎯 <b>Настройки:</b>\n"
-                f"💰 Порог прибыли: ${self.profit_threshold}\n"
+                f"💰 Порог прибыли: ${self.profit_threshold} (7 центов)\n"
                 f"⏰ Проверка каждые: {self.check_interval} сек\n"
                 f"💱 Мониторинг: BTC/ETH\n"
                 f"📈 Действие: Рыночная продажа\n\n"
@@ -912,7 +941,7 @@ class PnLMonitor:
                     # Проверяем необходимость балансировки портфеля (синхронно)
                     try:
                         # Вызываем синхронную версию балансировки
-                        self.check_portfolio_balance_sync()
+                        await self.check_portfolio_balance_sync()
                     except Exception as balance_error:
                         logger.error(f"Ошибка проверки балансировки: {balance_error}")
                     
@@ -993,12 +1022,12 @@ class PnLMonitor:
                 'balances': {}
             }
 
-def main():
+async def main():
     monitor = PnLMonitor()
     
     try:
         # Запускаем мониторинг PnL
-        monitor.start_monitoring()
+        await monitor.start_monitoring()
     except KeyboardInterrupt:
         logger.info("🛑 Получен сигнал остановки")
         monitor.stop_monitoring()

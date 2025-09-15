@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Монитор баланса для автоматической покупки BTC/ETH
-Отслеживает освободившийся USDT и автоматически покупает BTC и ETH
+Отслеживает освободившийся USDC и автоматически покупает BTC и ETH
+ЗАЩИТА: Нельзя делать покупки, которые оставят на балансе USDC меньше $10!
 """
 
 import asyncio
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class BalanceMonitor:
-    """Монитор баланса для автоматических покупок"""
+    """Монитор баланса для автоматических покупок BTC/ETH за USDC"""
     
     def __init__(self):
         self.mex_api = MexAPI()
@@ -31,10 +32,13 @@ class BalanceMonitor:
         self.anti_hype_filter = AntiHypeFilter()
         self.rebalancer_filter = RebalancerAntiHypeFilter()
         
-        # Настройки мониторинга
-        self.min_balance_threshold = 10.0  # Минимальный баланс для покупки ($10)
-        self.max_purchase_amount = 100.0   # Максимальная сумма одной покупки ($100)
+        # Настройки мониторинга - ПЕРЕВОД НА USDC!
+        self.min_balance_threshold = 10.0  # Минимальный баланс для покупки ($10 USDC)
+        self.max_purchase_amount = 100.0   # Максимальная сумма одной покупки ($100 USDC)
         self.balance_check_interval = 60   # Проверка каждые 60 секунд
+        
+        # ЗАЩИТА БАЛАНСА USDC - КРИТИЧНО!
+        self.min_usdc_balance_after_purchase = 2.0  # Минимум $2 USDC должно остаться после покупки (минимальный резерв)
         
         # Стратегия распределения BTC/ETH
         self.btc_allocation = 0.6  # 60% на BTC
@@ -55,6 +59,9 @@ class BalanceMonitor:
         # Статистика
         self.total_purchases = 0
         self.total_spent = 0.0
+        
+        # Контроль частоты отчетов (уменьшаем спам в 2 раза)
+        self.report_counter = 0
         
     def send_telegram_message(self, message: str):
         """Отправить сообщение в Telegram"""
@@ -89,7 +96,7 @@ class BalanceMonitor:
             return 0.0
     
     def get_usdt_balance(self) -> float:
-        """Получить текущий баланс USDT"""
+        """Получить текущий баланс USDT (для конвертации в USDC)"""
         try:
             account_info = self.mex_api.get_account_info()
             if 'balances' not in account_info:
@@ -104,6 +111,50 @@ class BalanceMonitor:
         except Exception as e:
             logger.error(f"Ошибка получения баланса USDT: {e}")
             return 0.0
+    
+    def ensure_usdc_for_trade(self, required_usdc: float) -> bool:
+        """Убедиться, что есть USDC для сделки; при недостатке купить за USDT"""
+        try:
+            buffer = 0.02  # небольшой запас на комиссии
+            need = required_usdc + buffer
+            usdc_free = self.get_usdc_balance()
+            
+            if usdc_free >= need:
+                return True
+
+            # Покупаем недостающее количество USDC за USDT
+            shortfall = max(0.0, need - usdc_free)
+            usdt_free = self.get_usdt_balance()
+            
+            if usdt_free < shortfall:
+                logger.warning(f"⚠️ Недостаточно USDT для покупки USDC: нужно ${shortfall:.2f}, есть ${usdt_free:.2f}")
+                return False
+
+            qty = round(shortfall, 2)
+            if qty < 1.0:
+                qty = 1.0  # минимальный разумный шаг
+
+            # Покупаем USDC за USDT через рыночный ордер
+            order = self.mex_api.place_order(
+                symbol='USDCUSDT', 
+                side='BUY', 
+                quantity=qty
+            )
+            
+            if order and 'orderId' in order:
+                logger.info(f"✅ Куплен USDC за USDT: ${qty:.2f}")
+                try:
+                    self.send_telegram_message(f"💱 Куплен USDC за USDT на ${qty:.2f} для автоматических покупок")
+                except Exception:
+                    pass
+                return True
+            else:
+                logger.error(f"❌ Не удалось купить USDC: {order}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка ensure_usdc_for_trade: {e}")
+            return False
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Получить текущую цену символа"""
@@ -166,11 +217,11 @@ class BalanceMonitor:
         # Если отклонение больше 10% - нужна ребалансировка
         return btc_deviation > 10 or eth_deviation > 10
     
-    def calculate_purchase_amounts(self, available_amount: float, currency: str = 'USDC') -> Dict[str, float]:
+    def calculate_purchase_amounts(self, available_usdc: float, currency: str = 'USDC') -> Dict[str, float]:
         """Рассчитать суммы для покупки BTC и ETH с умным распределением"""
         try:
-            # Ограничиваем максимальную сумму покупки
-            purchase_amount = min(available_amount, self.max_purchase_amount)
+            # Используем доступную сумму, но не превышаем максимальную
+            purchase_amount = self.calculate_safe_purchase_amount(available_usdc)
             
             # Определяем торговые пары на основе валюты
             btc_symbol = f'BTC{currency}'
@@ -207,17 +258,39 @@ class BalanceMonitor:
                 
                 if btc_percent > 60:  # BTC слишком много
                     logger.info(f"🔄 РЕБАЛАНСИРОВКА: BTC слишком много ({btc_percent:.1f}%), покупаем только ETH")
-                    btc_amount = 0
-                    eth_amount = purchase_amount
+                    if purchase_amount >= min_eth_amount:
+                        btc_amount = 0
+                        eth_amount = purchase_amount
+                    else:
+                        logger.warning(f"⚠️ Недостаточно средств для ETH: ${purchase_amount:.2f} < ${min_eth_amount:.2f}")
+                        return {}
                 elif eth_percent > 40:  # ETH слишком много
                     logger.info(f"🔄 РЕБАЛАНСИРОВКА: ETH слишком много ({eth_percent:.1f}%), покупаем только BTC")
-                    btc_amount = purchase_amount
-                    eth_amount = 0
+                    if purchase_amount >= min_btc_amount:
+                        btc_amount = purchase_amount
+                        eth_amount = 0
+                    else:
+                        logger.warning(f"⚠️ Недостаточно средств для BTC: ${purchase_amount:.2f} < ${min_btc_amount:.2f}")
+                        return {}
                 else:
                     # Если оба актива меньше нормы - покупаем оба пропорционально
                     logger.info(f"🔄 РЕБАЛАНСИРОВКА: Оба актива меньше нормы, покупаем пропорционально")
-                    btc_amount = purchase_amount * self.btc_allocation
-                    eth_amount = purchase_amount * self.eth_allocation
+                    if purchase_amount >= (min_btc_amount + min_eth_amount):
+                        btc_amount = purchase_amount * self.btc_allocation
+                        eth_amount = purchase_amount * self.eth_allocation
+                    elif purchase_amount >= min_btc_amount:
+                        # Покупаем только BTC
+                        btc_amount = purchase_amount
+                        eth_amount = 0
+                        logger.info("📈 Недостаточно средств для ETH при ребалансировке, покупаем только BTC")
+                    elif purchase_amount >= min_eth_amount:
+                        # Покупаем только ETH
+                        btc_amount = 0
+                        eth_amount = purchase_amount
+                        logger.info("📈 Недостаточно средств для BTC при ребалансировке, покупаем только ETH")
+                    else:
+                        logger.warning(f"⚠️ Недостаточно средств для покупки при ребалансировке: ${purchase_amount:.2f}")
+                        return {}
             # Если средств достаточно для обеих валют и ребалансировка не нужна
             elif purchase_amount >= (min_btc_amount + min_eth_amount):
                 # Обычное распределение
@@ -225,24 +298,24 @@ class BalanceMonitor:
                 eth_amount = purchase_amount * self.eth_allocation
                 
                 # Корректируем если одна из сумм меньше минимума
-                if btc_amount < max(min_btc_amount, 5.0):
-                    excess = max(min_btc_amount, 5.0) - btc_amount
-                    btc_amount = max(min_btc_amount, 5.0)
-                    eth_amount = max(eth_amount - excess, max(min_eth_amount, 5.0))
+                if btc_amount < min_btc_amount:
+                    excess = min_btc_amount - btc_amount
+                    btc_amount = min_btc_amount
+                    eth_amount = max(eth_amount - excess, min_eth_amount)
                 
-                if eth_amount < max(min_eth_amount, 5.0):
-                    excess = max(min_eth_amount, 5.0) - eth_amount
-                    eth_amount = max(min_eth_amount, 5.0)
-                    btc_amount = max(btc_amount - excess, max(min_btc_amount, 5.0))
+                if eth_amount < min_eth_amount:
+                    excess = min_eth_amount - eth_amount
+                    eth_amount = min_eth_amount
+                    btc_amount = max(btc_amount - excess, min_btc_amount)
                 
             # Если средств хватает только на один актив
-            elif purchase_amount >= max(min_btc_amount, 5.0):
+            elif purchase_amount >= min_btc_amount:
                 # Покупаем только BTC
                 btc_amount = purchase_amount
                 eth_amount = 0
                 logger.info("📈 Недостаточно средств для ETH, покупаем только BTC")
                 
-            elif purchase_amount >= max(min_eth_amount, 5.0):
+            elif purchase_amount >= min_eth_amount:
                 # Покупаем только ETH
                 btc_amount = 0
                 eth_amount = purchase_amount
@@ -253,7 +326,7 @@ class BalanceMonitor:
                 return {}
             
             # Обрабатываем BTC с соответствующим фильтром
-            if btc_amount >= max(min_btc_amount, 5.0):
+            if btc_amount >= min_btc_amount:
                 # Выбираем фильтр в зависимости от необходимости ребалансировки
                 if needs_rebalancing:
                     btc_filter = self.rebalancer_filter.check_buy_permission(btc_symbol)
@@ -285,7 +358,7 @@ class BalanceMonitor:
                     logger.info(f"✅ BTC ордер [{filter_type}]{multiplier_text}: {btc_quantity:.6f} BTC на ${actual_btc_amount:.2f} {currency} [{btc_filter['reason']}]")
             
             # Обрабатываем ETH с соответствующим фильтром
-            if eth_amount >= max(min_eth_amount, 5.0):
+            if eth_amount >= min_eth_amount:
                 # Выбираем фильтр в зависимости от необходимости ребалансировки
                 if needs_rebalancing:
                     eth_filter = self.rebalancer_filter.check_buy_permission(eth_symbol)
@@ -322,16 +395,52 @@ class BalanceMonitor:
             logger.error(f"Ошибка расчета сумм покупки: {e}")
             return {}
     
-    def can_make_purchase(self) -> bool:
-        """Проверить, можно ли совершить покупку"""
-        current_time = time.time()
-        
-        # Проверяем интервал между покупками
-        if (self.last_purchase_time and 
-            current_time - self.last_purchase_time < self.min_purchase_interval):
-            return False
-        
-        return True
+    def can_make_purchase(self, purchase_amount: float) -> Tuple[bool, str]:
+        """
+        Проверить, можно ли сделать покупку на указанную сумму
+        ЗАЩИТА: Нельзя оставлять на балансе USDC меньше $10!
+        """
+        try:
+            current_usdc = self.get_usdc_balance()
+            
+            # Проверяем, что после покупки останется достаточно USDC (минимум $10)
+            remaining_after_purchase = current_usdc - purchase_amount
+            if remaining_after_purchase < self.min_usdc_balance_after_purchase - 0.01:  # Добавляем небольшой буфер для точности
+                return False, f"После покупки останется ${remaining_after_purchase:.2f} USDC, что меньше минимума ${self.min_usdc_balance_after_purchase:.2f}"
+            
+            # Проверяем кулдаун между покупками
+            if (self.last_purchase_time and 
+                time.time() - self.last_purchase_time < self.min_purchase_interval):
+                remaining_cooldown = self.min_purchase_interval - (time.time() - self.last_purchase_time)
+                return False, f"Кулдаун между покупками: осталось {remaining_cooldown:.0f} сек"
+            
+            return True, "OK"
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки возможности покупки: {e}")
+            return False, f"Ошибка проверки: {e}"
+    
+    def calculate_safe_purchase_amount(self, available_usdc: float) -> float:
+        """
+        Рассчитать безопасную сумму для покупки
+        Гарантирует, что после покупки останется минимум $10 USDC
+        """
+        try:
+            # Максимальная сумма, которую можно потратить
+            max_safe_amount = available_usdc - self.min_usdc_balance_after_purchase
+            
+            if max_safe_amount <= 0:
+                return 0.0
+            
+            # Ограничиваем максимальной суммой покупки
+            safe_amount = min(max_safe_amount, self.max_purchase_amount)
+            
+            # Округляем до 2 знаков после запятой
+            return round(safe_amount, 2)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка расчета безопасной суммы покупки: {e}")
+            return 0.0
     
     def get_orderbook_data(self, symbol: str) -> Optional[Dict]:
         """Получить данные стакана заявок"""
@@ -446,7 +555,31 @@ class BalanceMonitor:
                 required_amount = quantity * limit_price
                 current_balance = self.get_usdc_balance()
                 
+                # Если требуемая сумма больше доступной, корректируем количество
                 if required_amount > current_balance:
+                    logger.warning(f"⚠️ Корректируем количество: нужно ${required_amount:.2f}, доступно ${current_balance:.2f}")
+                    # Корректируем количество под доступный баланс с небольшим запасом (0.5%)
+                    safe_balance = current_balance * 0.995
+                    corrected_quantity = safe_balance / limit_price
+                    
+                    # Округляем до допустимой точности
+                    if symbol == 'ETHUSDC':
+                        corrected_quantity = round(corrected_quantity, 6)
+                        if corrected_quantity < 0.001:
+                            logger.error(f"🚨 Скорректированное количество ETH {corrected_quantity:.6f} меньше минимума 0.001")
+                            return {'success': False, 'error': f'Insufficient balance after correction: ${current_balance:.2f} недостаточно для минимума ETH'}
+                    elif symbol == 'BTCUSDC':
+                        corrected_quantity = round(corrected_quantity, 6)
+                        if corrected_quantity < 0.0001:
+                            logger.error(f"🚨 Скорректированное количество BTC {corrected_quantity:.6f} меньше минимума 0.0001")
+                            return {'success': False, 'error': f'Insufficient balance after correction: ${current_balance:.2f} недостаточно для минимума BTC'}
+                    
+                    quantity = corrected_quantity
+                    required_amount = quantity * limit_price
+                    logger.info(f"✅ Скорректировано: количество={quantity:.6f}, сумма=${required_amount:.2f}")
+                
+                # Добавляем небольшой запас для погрешности расчётов (0.1%)
+                if required_amount > current_balance * 0.999:
                     logger.error(f"🚨 Недостаточно USDC для ордера: нужно ${required_amount:.2f}, доступно ${current_balance:.2f}")
                     return {'success': False, 'error': f'Insufficient balance: нужно ${required_amount:.2f}, доступно ${current_balance:.2f}'}
                 
@@ -498,16 +631,16 @@ class BalanceMonitor:
         
         return {'success': False, 'error': 'Превышено количество попыток'}
     
-    async def execute_auto_purchase(self, available_amount: float, currency: str = 'USDC') -> Dict:
+    async def execute_auto_purchase(self, available_usdc: float, currency: str = 'USDC') -> Dict:
         """Выполнить автоматическую покупку BTC/ETH"""
         try:
-            logger.info(f"🚀 Автоматическая покупка на ${available_amount:.2f} {currency}")
+            logger.info(f"🚀 Автоматическая покупка на ${available_usdc:.2f} {currency}")
             
             # Рассчитываем суммы покупки
-            purchase_plan = self.calculate_purchase_amounts(available_amount, currency)
+            purchase_plan = self.calculate_purchase_amounts(available_usdc, currency)
             
             if not purchase_plan:
-                logger.warning(f"⚠️ Нет подходящих ордеров для суммы ${available_amount:.2f} {currency}")
+                logger.warning(f"⚠️ Нет подходящих ордеров для суммы ${available_usdc:.2f} {currency}")
                 logger.warning("💡 Возможные причины:")
                 logger.warning("   - Сумма слишком мала для минимальных лотов")
                 logger.warning("   - BTC требует >= $11.70 (0.0001 BTC)")
@@ -525,55 +658,77 @@ class BalanceMonitor:
                     min_eth_amount = 0.001 * eth_price
                     
                     # Если можем купить хотя бы один актив, делаем это
-                    if available_amount >= min_btc_amount:
-                        logger.info(f"✅ Можем купить BTC на ${available_amount:.2f}")
-                        # Покупаем только BTC
-                        btc_quantity = available_amount / btc_price
+                    if available_usdc >= min_btc_amount:
+                        logger.info(f"✅ Можем купить BTC на ${available_usdc:.2f}")
+                        # Проверяем антихайп фильтр для BTC
+                        btc_filter = self.anti_hype_filter.check_buy_permission(btc_symbol)
+                        if not btc_filter['allowed']:
+                            logger.warning(f"🚫 BTC покупка заблокирована антихайп фильтром: {btc_filter['reason']}")
+                            return {
+                                'success': False,
+                                'error': f'BTC покупка заблокирована: {btc_filter["reason"]}',
+                                'reason': 'anti_hype_blocked'
+                            }
+                        
+                        # Применяем множитель фильтра
+                        available_usdc *= btc_filter['multiplier']
+                        btc_quantity = available_usdc / btc_price
                         btc_quantity = round(btc_quantity, 6)
                         
                         purchase_plan = {
                             btc_symbol: {
-                                'amount': available_amount,
+                                'amount': available_usdc,
                                 'quantity': btc_quantity,
                                 'price': btc_price,
                                 'currency': currency,
-                                'filter_reason': 'single_asset',
-                                'filter_multiplier': 1.0
+                                'filter_reason': btc_filter['reason'],
+                                'filter_multiplier': btc_filter['multiplier']
                             }
                         }
-                    elif available_amount >= min_eth_amount:
-                        logger.info(f"✅ Можем купить ETH на ${available_amount:.2f}")
-                        # Покупаем только ETH
-                        eth_quantity = available_amount / eth_price
+                    elif available_usdc >= min_eth_amount:
+                        logger.info(f"✅ Можем купить ETH на ${available_usdc:.2f}")
+                        # Проверяем антихайп фильтр для ETH
+                        eth_filter = self.anti_hype_filter.check_buy_permission(eth_symbol)
+                        if not eth_filter['allowed']:
+                            logger.warning(f"🚫 ETH покупка заблокирована антихайп фильтром: {eth_filter['reason']}")
+                            return {
+                                'success': False,
+                                'error': f'ETH покупка заблокирована: {eth_filter["reason"]}',
+                                'reason': 'anti_hype_blocked'
+                            }
+                        
+                        # Применяем множитель фильтра
+                        available_usdc *= eth_filter['multiplier']
+                        eth_quantity = available_usdc / eth_price
                         eth_quantity = round(eth_quantity, 6)
                         
                         purchase_plan = {
                             eth_symbol: {
-                                'amount': available_amount,
+                                'amount': available_usdc,
                                 'quantity': eth_quantity,
                                 'price': eth_price,
                                 'currency': currency,
-                                'filter_reason': 'single_asset',
-                                'filter_multiplier': 1.0
+                                'filter_reason': eth_filter['reason'],
+                                'filter_multiplier': eth_filter['multiplier']
                             }
                         }
                     else:
                         return {
                             'success': False, 
-                            'error': f'Сумма ${available_amount:.2f} {currency} слишком мала. Минимум: BTC ~${min_btc_amount:.2f}, ETH ~${min_eth_amount:.2f}',
+                            'error': f'Сумма ${available_usdc:.2f} {currency} слишком мала. Минимум: BTC ~${min_btc_amount:.2f}, ETH ~${min_eth_amount:.2f}',
                             'reason': 'insufficient_amount'
                         }
                 else:
                     return {
                         'success': False, 
-                        'error': f'Сумма ${available_amount:.2f} {currency} слишком мала. Минимум: BTC ~$11.70, ETH ~$4.17',
+                        'error': f'Сумма ${available_usdc:.2f} {currency} слишком мала. Минимум: BTC ~$11.70, ETH ~$4.17',
                         'reason': 'insufficient_amount'
                     }
             
             results = {
                 'success': True,
                 'timestamp': datetime.now(),
-                'available_usdc': available_amount,  # Сохраняем ключ для совместимости
+                'available_usdc': available_usdc,  # Сохраняем ключ для совместимости
                 'currency': currency,
                 'purchases': [],
                 'total_spent': 0.0
@@ -581,9 +736,6 @@ class BalanceMonitor:
             
             # Выполняем покупки
             for symbol, purchase_data in purchase_plan.items():
-                if purchase_data['amount'] < 5:  # Минимум $5 на покупку
-                    continue
-                
                 logger.info(f"Покупка {symbol}: ${purchase_data['amount']:.2f} {purchase_data['currency']}")
                 
                 # Размещаем лимитный ордер
@@ -778,27 +930,66 @@ class BalanceMonitor:
             if len(self.balance_history) > self.max_history_size:
                 self.balance_history = self.balance_history[-self.max_history_size:]
             
-            # Проверяем условия для покупки
-            if (available_for_purchase >= self.min_balance_threshold and 
-                self.can_make_purchase()):
+            # Проверяем условия для покупки с ЗАЩИТОЙ БАЛАНСА USDC
+            if available_for_purchase >= self.min_balance_threshold:
+                # Рассчитываем безопасную сумму для покупки
+                safe_purchase_amount = self.calculate_safe_purchase_amount(available_for_purchase)
                 
-                logger.info(f"🎯 Условия для покупки выполнены! Доступно: ${available_for_purchase:.2f}")
-                
-                # Выполняем покупку (ВСЕГДА USDC пары)
-                results = await self.execute_auto_purchase(available_for_purchase, 'USDC')
-                
-                # Отправляем отчет в Telegram
-                report = self.format_purchase_report(results)
-                if report:  # Проверяем, что отчет не None
-                    self.send_telegram_message(report)
-                
-                return results
+                if safe_purchase_amount > 0:
+                    logger.info(f"🛡️ Безопасная сумма для покупки: ${safe_purchase_amount:.2f} USDC")
+                    logger.info(f"💰 После покупки останется: ${available_for_purchase - safe_purchase_amount:.2f} USDC")
+                    
+                    # Проверяем возможность покупки
+                    can_purchase, reason = self.can_make_purchase(safe_purchase_amount)
+                    
+                    if can_purchase:
+                        logger.info(f"🎯 Условия для покупки выполнены! Безопасная сумма: ${safe_purchase_amount:.2f}")
+                        
+                        # Выполняем покупку (ВСЕГДА USDC пары)
+                        results = await self.execute_auto_purchase(safe_purchase_amount, 'USDC')
+                        
+                        if results['success']:
+                            self.last_purchase_time = time.time()
+                            self.total_purchases += 1
+                            self.total_spent += safe_purchase_amount
+                            
+                            logger.info(f"✅ Автоматическая покупка выполнена успешно!")
+                            logger.info(f"📊 Статистика: {self.total_purchases} покупок, потрачено ${self.total_spent:.2f} USDC")
+                        
+                        # Отправляем отчет в Telegram (каждые 10 минут вместо 5)
+                        self.report_counter += 1
+                        if self.report_counter % 2 == 0:  # Отправляем каждый второй отчет
+                            report = self.format_purchase_report(results)
+                            if report:  # Проверяем, что отчет не None
+                                self.send_telegram_message(report)
+                                logger.info("📊 Отчет покупки отправлен в Telegram")
+                        else:
+                            logger.info("📊 Отчет покупки пропущен (уменьшение спама)")
+                        
+                        return results
+                    else:
+                        logger.info(f"⏳ Покупка отложена: {reason}")
+                        
+                        # Логируем детали блокировки
+                        if "кулдаун" in reason.lower():
+                            remaining_time = self.min_purchase_interval - (time.time() - self.last_purchase_time)
+                            logger.info(f"⏰ Осталось до следующей покупки: {remaining_time:.0f} сек")
+                        elif "недостаточно" in reason.lower():
+                            logger.info(f"💰 Недостаточно USDC для безопасной покупки")
+                        else:
+                            logger.info(f"ℹ️ Причина блокировки: {reason}")
+                        
+                        return None
+                else:
+                    logger.info(f"🛡️ Недостаточно USDC для безопасной покупки (защита баланса)")
+                    logger.info(f"💰 Требуется минимум: ${self.min_usdc_balance_after_purchase} USDC после покупки")
+                    return None
             else:
-                if available_for_purchase < self.min_balance_threshold:
-                    logger.info(f"Баланс слишком мал: ${available_for_purchase:.2f} < ${self.min_balance_threshold}")
-                elif not self.can_make_purchase():
-                    remaining_time = self.min_purchase_interval - (time.time() - self.last_purchase_time)
-                    logger.info(f"Слишком рано для покупки. Осталось: {remaining_time:.0f} сек")
+                logger.info(f"Баланс слишком мал: ${available_for_purchase:.2f} < ${self.min_balance_threshold}")
+                
+                # Если USDC мало, но есть USDT - предлагаем конвертацию
+                if usdt_balance >= 5.0:
+                    logger.info(f"💡 Рекомендация: конвертировать ${usdt_balance:.2f} USDT в USDC для покупок")
                 
                 return None
                 
@@ -808,22 +999,25 @@ class BalanceMonitor:
     
     async def start_monitoring(self):
         """Запустить мониторинг баланса"""
-        logger.info("🚀 Запуск мониторинга баланса для автоматических покупок")
+        logger.info("🚀 Запуск мониторинга баланса для автоматических покупок BTC/ETH за USDC")
         logger.info(f"📊 Настройки:")
-        logger.info(f"   Минимальный баланс: ${self.min_balance_threshold}")
-        logger.info(f"   Максимальная покупка: ${self.max_purchase_amount}")
+        logger.info(f"   Минимальный баланс: ${self.min_balance_threshold} USDC")
+        logger.info(f"   Максимальная покупка: ${self.max_purchase_amount} USDC")
+        logger.info(f"   ЗАЩИТА: Минимум ${self.min_usdc_balance_after_purchase} USDC должно остаться после покупки")
         logger.info(f"   Интервал проверки: {self.balance_check_interval} сек")
         logger.info(f"   Распределение: BTC {self.btc_allocation*100}% / ETH {self.eth_allocation*100}%")
         
         # Отправляем уведомление о запуске
         startup_message = (
-            "<b>🤖 МОНИТОР БАЛАНСА ЗАПУЩЕН</b>\n\n"
+            "<b>🤖 МОНИТОР БАЛАНСА USDC ЗАПУЩЕН</b>\n\n"
             f"📊 Настройки:\n"
-            f"💰 Минимальный баланс: ${self.min_balance_threshold}\n"
-            f"💸 Максимальная покупка: ${self.max_purchase_amount}\n"
+            f"💰 Минимальный баланс: ${self.min_balance_threshold} USDC\n"
+            f"💸 Максимальная покупка: ${self.max_purchase_amount} USDC\n"
+            f"🛡️ ЗАЩИТА: Минимум ${self.min_usdc_balance_after_purchase} USDC после покупки\n"
             f"⏰ Проверка каждые {self.balance_check_interval} сек\n"
             f"📈 BTC: {self.btc_allocation*100}% | ETH: {self.eth_allocation*100}%\n\n"
-            "🔄 Мониторинг активен..."
+            "🔄 Мониторинг активен...\n"
+            "💱 Все покупки выполняются за USDC (рыночные ордера без комиссий)"
         )
         self.send_telegram_message(startup_message)
         
