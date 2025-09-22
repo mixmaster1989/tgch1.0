@@ -385,6 +385,18 @@ class AltsMonitor:
                 
                 # 🔥 НОВОЕ: ПРОВЕРЯЕМ РАЗРЕШЕНИЕ У БАЛАНСИРОВЩИКА
                 logger.info(f"🔍 Запрашиваем разрешение у балансировщика на покупку {alt}...")
+                
+                # Отправляем уведомление о запросе разрешения
+                request_message = (
+                    f"🔍 <b>ЗАПРОС РАЗРЕШЕНИЯ НА ПОКУПКУ АЛЬТА</b>\n\n"
+                    f"💱 <b>{alt}</b>\n"
+                    f"💵 Сумма: ${spend_amount:.2f}\n"
+                    f"🛡️ Анти-хайп: {alt_filter['reason']} ×{alt_filter['multiplier']}\n\n"
+                    f"⚖️ <b>Ожидаем ответ от балансировщика...</b>\n\n"
+                    f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+                )
+                PnLMonitor().send_telegram_message(request_message)
+                
                 permission = self.balancer.check_purchase_permission(spend_amount, "ALTS")
                 
                 if not permission['allowed']:

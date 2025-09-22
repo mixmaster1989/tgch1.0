@@ -18,6 +18,8 @@ from decimal import Decimal
 
 from mex_api import MexAPI
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from portfolio_balancer import PortfolioBalancer
+
 import requests
 
 # Настройка логирования
@@ -60,6 +62,7 @@ class Active5050Balancer:
         
         # Контроль частоты отчетов (уменьшаем спам в 2 раза)
         self.report_counter = 0
+        self.btc_eth_balancer = PortfolioBalancer()
         
     def send_telegram_message(self, message: str):
         """Отправить сообщение в Telegram"""
@@ -343,64 +346,106 @@ class Active5050Balancer:
             portfolio = self.get_portfolio_values()
             
             if portfolio['total_value'] <= 0:
-                return {
+                result = {
                     'allowed': False,
                     'reason': 'Портфель пуст или недоступен',
                     'current_alts_ratio': 0.0,
                     'current_btceth_ratio': 0.0
                 }
+            else:
+                # Рассчитываем текущие пропорции
+                alts_ratio = portfolio['alts_value'] / portfolio['total_value']
+                btceth_ratio = portfolio['btceth_value_usdt'] / portfolio['total_value']
+                
+                # Проверяем отклонение от целевых пропорций
+                alts_deviation_percent = abs(alts_ratio - self.target_alts_ratio) / self.target_alts_ratio
+                btceth_deviation_percent = abs(btceth_ratio - self.target_btceth_ratio) / self.target_btceth_ratio
+                
+                # Если отклонение меньше 10% - разрешаем покупку
+                if alts_deviation_percent < self.min_deviation_threshold and btceth_deviation_percent < self.min_deviation_threshold:
+                    result = {
+                        'allowed': True,
+                        'reason': f'Пропорции сбалансированы (Альты: {alts_ratio*100:.1f}%, BTC/ETH: {btceth_ratio*100:.1f}%)',
+                        'current_alts_ratio': alts_ratio,
+                        'current_btceth_ratio': btceth_ratio
+                    }
+                
+                # Если альтов больше 50% - блокируем покупку альтов
+                elif alts_ratio > self.target_alts_ratio and purchase_type == "ALTS":
+                    result = {
+                        'allowed': False,
+                        'reason': f'Альтов уже {alts_ratio*100:.1f}% > 50% (отклонение {alts_deviation_percent*100:.1f}%)',
+                        'current_alts_ratio': alts_ratio,
+                        'current_btceth_ratio': btceth_ratio
+                    }
+                
+                # Если BTC/ETH больше 50% - разрешаем покупку альтов
+                elif btceth_ratio > self.target_btceth_ratio and purchase_type == "ALTS":
+                    result = {
+                        'allowed': True,
+                        'reason': f'BTC/ETH {btceth_ratio*100:.1f}% > 50%, можно покупать альты',
+                        'current_alts_ratio': alts_ratio,
+                        'current_btceth_ratio': btceth_ratio
+                    }
+                
+                # По умолчанию разрешаем
+                else:
+                    result = {
+                        'allowed': True,
+                        'reason': f'Пропорции в норме (Альты: {alts_ratio*100:.1f}%, BTC/ETH: {btceth_ratio*100:.1f}%)',
+                        'current_alts_ratio': alts_ratio,
+                        'current_btceth_ratio': btceth_ratio
+                    }
             
-            # Рассчитываем текущие пропорции
-            alts_ratio = portfolio['alts_value'] / portfolio['total_value']
-            btceth_ratio = portfolio['btceth_value_usdt'] / portfolio['total_value']
+            # 🔥 НОВОЕ: Отправляем ответ в Telegram
+            status_icon = "✅" if result['allowed'] else "🚫"
+            status_text = "РАЗРЕШЕНО" if result['allowed'] else "ЗАБЛОКИРОВАНО"
             
-            # Проверяем отклонение от целевых пропорций
-            alts_deviation_percent = abs(alts_ratio - self.target_alts_ratio) / self.target_alts_ratio
-            btceth_deviation_percent = abs(btceth_ratio - self.target_btceth_ratio) / self.target_btceth_ratio
+            response_message = (
+                f"{status_icon} <b>ОТВЕТ БАЛАНСИРОВЩИКА: {status_text}</b>\n\n"
+                f"💰 Сумма запроса: ${purchase_amount:.2f}\n"
+                f"📊 Тип: {purchase_type}\n\n"
+                f"📈 <b>ТЕКУЩИЕ ПРОПОРЦИИ:</b>\n"
+                f"Альты: {result['current_alts_ratio']*100:.1f}%\n"
+                f"BTC/ETH: {result['current_btceth_ratio']*100:.1f}%\n\n"
+                f"📝 <b>ПРИЧИНА:</b>\n"
+                f"{result['reason']}\n\n"
+                f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+            )
             
-            # Если отклонение меньше 10% - разрешаем покупку
-            if alts_deviation_percent < self.min_deviation_threshold and btceth_deviation_percent < self.min_deviation_threshold:
-                return {
-                    'allowed': True,
-                    'reason': f'Пропорции сбалансированы (Альты: {alts_ratio*100:.1f}%, BTC/ETH: {btceth_ratio*100:.1f}%)',
-                    'current_alts_ratio': alts_ratio,
-                    'current_btceth_ratio': btceth_ratio
-                }
+            try:
+                self.send_telegram_message(response_message)
+                logger.info(f"📱 Ответ балансировщика отправлен в Telegram: {status_text}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки ответа в Telegram: {e}")
             
-            # Если альтов больше 50% - блокируем покупку альтов
-            if alts_ratio > self.target_alts_ratio and purchase_type == "ALTS":
-                return {
-                    'allowed': False,
-                    'reason': f'Альтов уже {alts_ratio*100:.1f}% > 50% (отклонение {alts_deviation_percent*100:.1f}%)',
-                    'current_alts_ratio': alts_ratio,
-                    'current_btceth_ratio': btceth_ratio
-                }
-            
-            # Если BTC/ETH больше 50% - разрешаем покупку альтов
-            if btceth_ratio > self.target_btceth_ratio and purchase_type == "ALTS":
-                return {
-                    'allowed': True,
-                    'reason': f'BTC/ETH {btceth_ratio*100:.1f}% > 50%, можно покупать альты',
-                    'current_alts_ratio': alts_ratio,
-                    'current_btceth_ratio': btceth_ratio
-                }
-            
-            # По умолчанию разрешаем
-            return {
-                'allowed': True,
-                'reason': f'Пропорции в норме (Альты: {alts_ratio*100:.1f}%, BTC/ETH: {btceth_ratio*100:.1f}%)',
-                'current_alts_ratio': alts_ratio,
-                'current_btceth_ratio': btceth_ratio
-            }
+            return result
             
         except Exception as e:
             logger.error(f"❌ Ошибка проверки разрешения: {e}")
-            return {
+            error_result = {
                 'allowed': False,
                 'reason': f'Ошибка проверки: {e}',
                 'current_alts_ratio': 0.0,
                 'current_btceth_ratio': 0.0
             }
+            
+            # Отправляем уведомление об ошибке
+            error_message = (
+                f"❌ <b>ОШИБКА БАЛАНСИРОВЩИКА</b>\n\n"
+                f"💰 Сумма запроса: ${purchase_amount:.2f}\n"
+                f"📊 Тип: {purchase_type}\n\n"
+                f"🚫 <b>ОШИБКА:</b>\n"
+                f"{e}\n\n"
+                f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+            )
+            
+            try:
+                self.send_telegram_message(error_message)
+            except Exception:
+                pass
+            
+            return error_result
     
     async def execute_balance_operation(self, balance_plan: Dict) -> bool:
         """Выполнить операцию балансировки за USDC"""
@@ -453,6 +498,32 @@ class Active5050Balancer:
     async def buy_btceth_with_usdc(self, amount: float) -> bool:
         """Купить BTC/ETH за USDC"""
         try:
+            # 🔥 НОВОЕ: Обеспечиваем USDC для покупки
+            logger.info(f"🔄 Проверяем наличие USDC для покупки BTC/ETH на ${amount:.2f}")
+            
+            if not self.ensure_usdc_for_trade(amount):
+                logger.error(f"❌ Не удалось обеспечить USDC для покупки BTC/ETH")
+                # Отправляем уведомление об ошибке
+                error_message = (
+                    f"❌ <b>ОШИБКА КОНВЕРТАЦИИ USDT → USDC</b>\n\n"
+                    f"💰 Требуется: ${amount:.2f} USDC\n"
+                    f"🔄 Действие: Конвертация USDT → USDC\n"
+                    f"📊 Цель: Покупка BTC/ETH для балансировки\n\n"
+                    f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+                )
+                self.send_telegram_message(error_message)
+                return False
+            
+            # Отправляем уведомление об успешной конвертации
+            success_message = (
+                f"✅ <b>USDC ПОДГОТОВЛЕН ДЛЯ ПОКУПКИ BTC/ETH</b>\n\n"
+                f"💰 Сумма: ${amount:.2f} USDC\n"
+                f"🔄 Действие: USDT → USDC (выполнено)\n"
+                f"📊 Цель: Покупка BTC/ETH для балансировки\n\n"
+                f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+            )
+            self.send_telegram_message(success_message)
+            
             # Распределяем между BTC и ETH
             btc_amount = amount * 0.6  # 60% на BTC
             eth_amount = amount * 0.4  # 40% на ETH
@@ -484,6 +555,27 @@ class Active5050Balancer:
                     success_count += 1
                 else:
                     logger.error(f"❌ Ошибка покупки ETH")
+            
+            # 🔥 НОВОЕ: Запускаем BTC-ETH балансировщик после покупки
+            if success_count > 0:
+                logger.info("🔄 Запускаем BTC-ETH балансировщик для выравнивания пропорций...")
+                try:
+                    btc_eth_result = self.btc_eth_balancer.execute_portfolio_rebalance_sync()
+                    if btc_eth_result.get('success'):
+                        logger.info("✅ BTC-ETH балансировка выполнена успешно")
+                        # Отправляем уведомление о BTC-ETH балансировке
+                        btc_eth_message = (
+                            f"⚖️ <b>BTC-ETH БАЛАНСИРОВКА ВЫПОЛНЕНА</b>\n\n"
+                            f"📊 Результат: {btc_eth_result.get('message', 'Успешно')}\n"
+                            f"💰 Потрачено: ${btc_eth_result.get('total_spent', 0):.2f}\n"
+                            f"🔄 Операций: {btc_eth_result.get('trades_executed', 0)}\n\n"
+                            f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+                        )
+                        self.send_telegram_message(btc_eth_message)
+                    else:
+                        logger.warning(f"⚠️ BTC-ETH балансировка не выполнена: {btc_eth_result.get('message', 'Неизвестная ошибка')}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка BTC-ETH балансировки: {e}")
             
             return success_count > 0
             

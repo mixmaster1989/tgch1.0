@@ -272,6 +272,19 @@ class PortfolioBalancer:
             logger.info(f"   Спред: {orderbook['spread_percent']:.4f}%")
             logger.info(f"   Наша цена: ${limit_price:.4f}")
             
+            # 🔥 НОВОЕ: Проверяем баланс перед покупкой
+            if action == 'BUY':
+                usdc_balance = self.get_usdc_balance()
+                required_usdc = quantity * limit_price
+                
+                logger.info(f"💰 Проверка баланса перед покупкой:")
+                logger.info(f"   Доступно USDC: ${usdc_balance:.2f}")
+                logger.info(f"   Требуется USDC: ${required_usdc:.2f}")
+                
+                if usdc_balance < required_usdc:
+                    logger.warning(f"⚠️ Недостаточно USDC для покупки: нужно ${required_usdc:.2f}, есть ${usdc_balance:.2f}")
+                    return {'success': False, 'error': f'Недостаточно USDC: нужно ${required_usdc:.2f}, есть ${usdc_balance:.2f}'}
+            
             # Создаем лимитный ордер
             order = self.mex_api.place_order(
                 symbol=symbol,
@@ -282,6 +295,23 @@ class PortfolioBalancer:
             
             if order and 'orderId' in order:
                 logger.info(f"✅ Ордер балансировки размещен: {order}")
+                
+                # 🔥 НОВОЕ: Ждем исполнения ордера (только для SELL)
+                if action == 'SELL':
+                    logger.info(f"⏳ Ожидаем исполнения ордера {order['orderId']}...")
+                    import time
+                    time.sleep(2)  # Ждем 2 секунды для исполнения
+                    
+                    # Проверяем статус ордера
+                    try:
+                        order_status = self.mex_api.get_order_status(symbol, order['orderId'])
+                        if order_status and order_status.get('status') == 'FILLED':
+                            logger.info(f"✅ Ордер {order['orderId']} исполнен")
+                        else:
+                            logger.warning(f"⚠️ Ордер {order['orderId']} еще не исполнен: {order_status}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Не удалось проверить статус ордера: {e}")
+                
                 return {
                     'success': True,
                     'order_id': order['orderId'],
@@ -300,7 +330,7 @@ class PortfolioBalancer:
             return {'success': False, 'error': str(e)}
     
     def calculate_rebalance_trades(self, balances: Dict, values: Dict) -> Dict:
-        """Рассчитать необходимые торги для балансировки"""
+        """Рассчитать необходимые торги для балансировки с учетом PnL и USDC"""
         try:
             target_btc_value = values['total_value'] * self.target_btc_ratio
             target_eth_value = values['total_value'] * self.target_eth_ratio
@@ -308,48 +338,100 @@ class PortfolioBalancer:
             btc_diff = values['btc_value'] - target_btc_value
             eth_diff = values['eth_value'] - target_eth_value
             
+            # Получаем PnL для каждого актива
+            btc_pnl = self.get_asset_pnl('BTC', balances, values)
+            eth_pnl = self.get_asset_pnl('ETH', balances, values)
+            
+            # Получаем доступный USDC
+            usdc_balance = self.get_usdc_balance()
+            
             trades = []
             
-            # Если BTC больше нормы - продаем BTC
+            # 🔥 НОВАЯ ЛОГИКА: Сначала пытаемся купить за USDC
+            
+            # Если BTC больше нормы - продаем BTC (только если в плюсе или нейтрале)
             if btc_diff > 0:
                 btc_to_sell = btc_diff / values['btc_price']
                 
-                # Проверяем минимальные лоты
-                if btc_to_sell >= 0.0001:  # Минимальный лот BTC
-                    btc_to_sell = round(btc_to_sell, 6)
-                    trades.append({
-                        'action': 'SELL',
-                        'symbol': 'BTCUSDC', 
-                        'quantity': btc_to_sell,
-                        'value': btc_to_sell * values['btc_price']
-                    })
+                # Проверяем PnL BTC - продаем только если в плюсе или нейтрале
+                if btc_pnl >= 0:  # BTC в плюсе или нейтрале
+                    if btc_to_sell >= 0.0001:  # Минимальный лот BTC
+                        btc_to_sell = round(btc_to_sell, 6)
+                        trades.append({
+                            'action': 'SELL',
+                            'symbol': 'BTCUSDC', 
+                            'quantity': btc_to_sell,
+                            'value': btc_to_sell * values['btc_price'],
+                            'pnl': btc_pnl,
+                            'reason': f'BTC в плюсе (PnL: ${btc_pnl:.4f})'
+                        })
+                else:
+                    logger.warning(f"🚫 Не продаем BTC: PnL отрицательный ${btc_pnl:.4f}")
             
             # Если ETH меньше нормы - покупаем ETH
             if eth_diff < 0:
                 eth_to_buy = abs(eth_diff) / values['eth_price']
+                eth_cost = eth_to_buy * values['eth_price']
                 
-                # Проверяем минимальные лоты
                 if eth_to_buy >= 0.001:  # Минимальный лот ETH
                     eth_to_buy = round(eth_to_buy, 6)
-                    trades.append({
-                        'action': 'BUY',
-                        'symbol': 'ETHUSDC',
-                        'quantity': eth_to_buy,
-                        'value': eth_to_buy * values['eth_price']
-                    })
+                    
+                    # Проверяем хватает ли USDC
+                    if usdc_balance >= eth_cost:
+                        # Хватает USDC - покупаем
+                        trades.append({
+                            'action': 'BUY',
+                            'symbol': 'ETHUSDC',
+                            'quantity': eth_to_buy,
+                            'value': eth_cost,
+                            'funding_source': 'USDC',
+                            'reason': f'Покупка за USDC (доступно: ${usdc_balance:.2f})'
+                        })
+                    else:
+                        # Не хватает USDC - нужно продать BTC
+                        usdc_shortage = eth_cost - usdc_balance
+                        btc_to_sell_for_usdc = usdc_shortage / values['btc_price']
+                        
+                        # Проверяем PnL BTC - продаем только если в плюсе
+                        if btc_pnl >= 0:  # BTC в плюсе
+                            if btc_to_sell_for_usdc >= 0.0001:  # Минимальный лот BTC
+                                btc_to_sell_for_usdc = round(btc_to_sell_for_usdc, 6)
+                                trades.append({
+                                    'action': 'SELL',
+                                    'symbol': 'BTCUSDC',
+                                    'quantity': btc_to_sell_for_usdc,
+                                    'value': btc_to_sell_for_usdc * values['btc_price'],
+                                    'pnl': btc_pnl,
+                                    'reason': f'Продажа BTC для покупки ETH (PnL: ${btc_pnl:.4f})'
+                                })
+                                
+                                # Добавляем покупку ETH
+                                trades.append({
+                                    'action': 'BUY',
+                                    'symbol': 'ETHUSDC',
+                                    'quantity': eth_to_buy,
+                                    'value': eth_cost,
+                                    'funding_source': 'BTC_SALE',
+                                    'reason': f'Покупка ETH за выручку от продажи BTC'
+                                })
+                        else:
+                            logger.warning(f"🚫 Не продаем BTC для покупки ETH: PnL отрицательный ${btc_pnl:.4f}")
+                            logger.info(f"⏳ Ждем следующей проверки - ETH в минусе, BTC в минусе")
             
             return {
                 'trades': trades,
                 'target_btc_value': target_btc_value,
                 'target_eth_value': target_eth_value,
                 'btc_diff': btc_diff,
-                'eth_diff': eth_diff
+                'eth_diff': eth_diff,
+                'btc_pnl': btc_pnl,
+                'eth_pnl': eth_pnl,
+                'usdc_balance': usdc_balance
             }
             
         except Exception as e:
             logger.error(f"Ошибка расчета торгов балансировки: {e}")
-            return {'trades': []}
-    
+            return {'trades': [], 'error': str(e)}
     async def execute_portfolio_rebalance(self) -> Dict:
         """Выполнить балансировку портфеля"""
         try:
@@ -383,7 +465,7 @@ class PortfolioBalancer:
             if not rebalance_plan['trades']:
                 return {'success': False, 'error': 'Нет подходящих торгов для балансировки'}
             
-            # Выполняем торги
+            # 🔥 НОВАЯ ЛОГИКА: Выполняем торги в правильном порядке
             results = {
                 'success': True,
                 'timestamp': datetime.now(),
@@ -396,7 +478,15 @@ class PortfolioBalancer:
                 'plan': rebalance_plan
             }
             
-            for trade in rebalance_plan['trades']:
+            # Разделяем торги на SELL и BUY
+            sell_trades = [t for t in rebalance_plan['trades'] if t['action'] == 'SELL']
+            buy_trades = [t for t in rebalance_plan['trades'] if t['action'] == 'BUY']
+            
+            logger.info(f"📊 План торгов: {len(sell_trades)} продаж, {len(buy_trades)} покупок")
+            
+            # 🔥 ШАГ 1: Выполняем все SELL операции
+            for trade in sell_trades:
+                logger.info(f"🔄 Выполняем продажу: {trade['symbol']} {trade['quantity']:.6f}")
                 trade_result = self.execute_rebalance_trade(
                     trade['action'],
                     trade['symbol'],
@@ -407,7 +497,46 @@ class PortfolioBalancer:
                 results['trades'].append(trade)
                 
                 if not trade_result['success']:
-                    logger.error(f"Ошибка выполнения торга: {trade_result['error']}")
+                    logger.error(f"❌ Ошибка продажи: {trade_result['error']}")
+                    # Продолжаем выполнение других торгов
+                else:
+                    logger.info(f"✅ Продажа выполнена: {trade['symbol']}")
+            
+            # 🔥 ШАГ 2: Ждем поступления USDC (если были продажи)
+            if sell_trades:
+                logger.info("⏳ Ожидаем поступления USDC от продаж...")
+                import time
+                time.sleep(3)  # Ждем 3 секунды для поступления USDC
+                
+                # Проверяем новый баланс USDC
+                new_usdc_balance = self.get_usdc_balance()
+                logger.info(f"💰 Новый баланс USDC: ${new_usdc_balance:.2f}")
+            
+            # 🔥 ШАГ 3: Выполняем все BUY операции
+            for trade in buy_trades:
+                logger.info(f"🔄 Выполняем покупку: {trade['symbol']} {trade['quantity']:.6f}")
+                
+                # Проверяем баланс USDC перед покупкой
+                usdc_balance = self.get_usdc_balance()
+                required_usdc = trade['quantity'] * trade.get('price', 0)
+                
+                if usdc_balance < required_usdc:
+                    logger.warning(f"⚠️ Недостаточно USDC для покупки {trade['symbol']}: нужно ${required_usdc:.2f}, есть ${usdc_balance:.2f}")
+                    trade_result = {'success': False, 'error': f'Недостаточно USDC: нужно ${required_usdc:.2f}, есть ${usdc_balance:.2f}'}
+                else:
+                    trade_result = self.execute_rebalance_trade(
+                        trade['action'],
+                        trade['symbol'],
+                        trade['quantity']
+                    )
+                
+                trade['result'] = trade_result
+                results['trades'].append(trade)
+                
+                if not trade_result['success']:
+                    logger.error(f"❌ Ошибка покупки: {trade_result['error']}")
+                else:
+                    logger.info(f"✅ Покупка выполнена: {trade['symbol']}")
             
             # Обновляем статистику
             self.total_rebalances += 1
@@ -527,5 +656,46 @@ class PortfolioBalancer:
             return results
             
         except Exception as e:
+            logger.error(f"Ошибка выполнения балансировки: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_asset_pnl(self, asset: str, balances: Dict, values: Dict) -> float:
+        """Получить PnL для конкретного актива"""
+        try:
+            if asset == 'BTC':
+                quantity = balances.get('BTC', 0.0)
+                current_price = values['btc_price']
+                # Упрощенный расчет PnL (можно улучшить)
+                avg_buy_price = current_price * 0.95  # Примерная средняя цена покупки
+                pnl = (current_price - avg_buy_price) * quantity
+                return pnl
+            elif asset == 'ETH':
+                quantity = balances.get('ETH', 0.0)
+                current_price = values['eth_price']
+                # Упрощенный расчет PnL (можно улучшить)
+                avg_buy_price = current_price * 0.95  # Примерная средняя цена покупки
+                pnl = (current_price - avg_buy_price) * quantity
+                return pnl
+            return 0.0
+        except Exception as e:
+            logger.error(f"Ошибка расчета PnL для {asset}: {e}")
+            return 0.0
+    
+    def get_usdc_balance(self) -> float:
+        """Получить баланс USDC"""
+        try:
+            account_info = self.mex_api.get_account_info()
+            if 'balances' not in account_info:
+                return 0.0
+            
+            for balance in account_info['balances']:
+                if balance['asset'] == 'USDC':
+                    return float(balance['free'])
+            
+            return 0.0
+        except Exception as e:
+            logger.error(f"Ошибка получения баланса USDC: {e}")
+            return 0.0
+
             logger.error(f"❌ Ошибка синхронной балансировки: {e}")
             return {'success': False, 'error': str(e)} 

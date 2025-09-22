@@ -502,6 +502,19 @@ class MarketScanner:
             
             # 🔥 НОВОЕ: ПРОВЕРЯЕМ РАЗРЕШЕНИЕ У БАЛАНСИРОВЩИКА
             logger.info(f"🔍 Запрашиваем разрешение у балансировщика на покупку {symbol}...")
+            
+            # Отправляем уведомление о запросе разрешения
+            request_message = (
+                f"🔍 <b>ЗАПРОС РАЗРЕШЕНИЯ НА ПОКУПКУ АЛЬТА</b>\n\n"
+                f"📈 <b>{symbol}</b>\n"
+                f"💰 Сумма: ${purchase_amount:.2f} USDT\n"
+                f"⭐ Скор: {score}\n"
+                f"📊 RSI: {best_opportunity['rsi']:.1f}\n\n"
+                f"⚖️ <b>Ожидаем ответ от балансировщика...</b>\n\n"
+                f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+            )
+            self.send_telegram_message(request_message)
+            
             permission = self.balancer.check_purchase_permission(purchase_amount, "ALTS")
             
             if not permission['allowed']:
