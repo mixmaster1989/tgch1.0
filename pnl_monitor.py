@@ -30,6 +30,7 @@ class PnLMonitor:
         
         # Загружаем настройки из конфигурации
         self.profit_threshold = PNL_MONITOR_CONFIG['profit_threshold']
+        self.profit_threshold_pct = PNL_MONITOR_CONFIG.get('profit_threshold_pct', None)
         self.check_interval = PNL_MONITOR_CONFIG['check_interval']
         self.notification_interval = PNL_MONITOR_CONFIG['notification_interval']
         self.trading_pairs = PNL_MONITOR_CONFIG['trading_pairs']
@@ -812,6 +813,9 @@ class PnLMonitor:
                         avg_cost_pnl = self._calculate_avg_cost_pnl(symbol, quantity, current_price)
                         pnl = avg_cost_pnl.get('unrealized_pnl', 0.0)
                         avg_buy_price = avg_cost_pnl.get('avg_buy_price', 0.0)
+                        pnl_pct = 0.0
+                        if avg_buy_price > 0:
+                            pnl_pct = ((current_price - avg_buy_price) / avg_buy_price) * 100.0
                         
                         logger.info(f"📊 {asset}:")
                         logger.info(f"   Количество: {quantity}")
@@ -819,8 +823,14 @@ class PnLMonitor:
                         logger.info(f"   Средняя цена закупа: ${avg_buy_price:.4f}")
                         logger.info(f"   PnL (AvgCost): ${pnl:.4f}")
                         
-                        # Проверяем, превышает ли PnL порог
-                        if pnl > self.profit_threshold:
+                        # Проверяем, превышает ли PnL порог (в процентах, с фоллбэком на долларовый)
+                        meets_threshold = False
+                        if self.profit_threshold_pct is not None and avg_buy_price > 0:
+                            meets_threshold = pnl_pct >= float(self.profit_threshold_pct)
+                        else:
+                            meets_threshold = pnl > self.profit_threshold
+
+                        if meets_threshold:
                             logger.info(f"🎯 PnL превышает порог! Продаем {asset}...")
                             
                             # Рыночная продажа (лимитная около рынка)
@@ -830,7 +840,10 @@ class PnLMonitor:
                             else:
                                 logger.error(f"❌ Ошибка продажи {asset}")
                         else:
-                            logger.info(f"📈 PnL {asset}: ${pnl:.4f} (порог: ${self.profit_threshold} - 7 центов)")
+                            if self.profit_threshold_pct is not None and avg_buy_price > 0:
+                                logger.info(f"📈 PnL {asset}: {pnl_pct:.2f}% (порог: {self.profit_threshold_pct}%)")
+                            else:
+                                logger.info(f"📈 PnL {asset}: ${pnl:.4f} (порог: ${self.profit_threshold})")
                             
                             # Сохраняем данные для уведомления
                             pnl_data.append({

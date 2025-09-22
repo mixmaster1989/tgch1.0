@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from mex_api import MexAPI
 from technical_indicators import TechnicalIndicators
 from anti_hype_filter import AntiHypeFilter
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, EXCLUDED_SYMBOLS
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, EXCLUDED_SYMBOLS, PURCHASE_PCT_OF_USDT, PURCHASE_MIN_USDT, PURCHASE_MAX_USDT
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -472,20 +472,13 @@ class MarketScanner:
             symbol = best_opportunity['symbol']
             score = best_opportunity['score']
             
-            # Рассчитываем сумму покупки
-            # Адаптивная логика: при малом балансе используем больше средств
-            if usdt_balance < 20.0:
-                # При балансе меньше $20 используем 60% средств
-                purchase_amount = usdt_balance * 0.6
-            else:
-                # При большем балансе используем 30% от баланса, максимум $50
-                purchase_amount = min(usdt_balance * 0.3, 50.0)
+            # Рассчитываем сумму покупки в процентах от свободного USDT с фоллбэком на минимум
+            purchase_amount = usdt_balance * (PURCHASE_PCT_OF_USDT / 100.0)
+            if usdt_balance >= PURCHASE_MIN_USDT:
+                purchase_amount = max(PURCHASE_MIN_USDT, purchase_amount)
+            purchase_amount = min(purchase_amount, PURCHASE_MAX_USDT)
             
-            # Обеспечиваем минимальную сумму $6
-            if purchase_amount < 6.0 and usdt_balance >= 6.0:
-                purchase_amount = 6.0
-            
-            if purchase_amount < 6.0:
+            if purchase_amount < PURCHASE_MIN_USDT:
                 logger.info("❌ Сумма покупки слишком мала")
                 # Отправляем уведомление о малой сумме
                 small_amount_message = (
@@ -493,7 +486,7 @@ class MarketScanner:
                     f"📊 Найдено возможностей: {len(buy_opportunities)}\n"
                     f"💵 Рассчитанная сумма: ${purchase_amount:.2f}\n"
                     f"💳 Доступный баланс: ${usdt_balance:.2f}\n"
-                    f"⚠️ Минимум для покупки: $6.00\n\n"
+                    f"⚠️ Минимум для покупки: ${PURCHASE_MIN_USDT:.2f}\n\n"
                     f"💡 <b>РЕШЕНИЕ:</b> Пополните баланс до $6+ для активации автопокупок\n\n"
                     f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                 )

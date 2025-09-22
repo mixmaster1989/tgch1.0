@@ -41,6 +41,11 @@ AI_EXPERT_MODELS = {
 AI_JUDGE_MODEL = "anthropic/claude-opus-4"
 ANALYSIS_INTERVAL = 300  # seconds
 
+# Purchase settings (percent-based for spot)
+PURCHASE_PCT_OF_USDT = 10.0  # 10% от свободного USDT на одну покупку
+PURCHASE_MIN_USDT = 6.0      # фоллбэк на минимальный нотионал
+PURCHASE_MAX_USDT = 100000.0 # верхняя «шляпа», практически без ограничений по умолчанию
+
 # Symbols to exclude from market scanning globally
 # Extend this list to disable noisy/illiquid pairs from scanner reports and auto-buys
 EXCLUDED_SYMBOLS = [
@@ -54,7 +59,8 @@ EXCLUDED_SYMBOLS = [
 
 # PnL Monitor Configuration
 PNL_MONITOR_CONFIG = {
-    'profit_threshold': 0.07,  # Снижено с 0.15 до 0.07 (7 центов) для подвижного аккаунта
+    'profit_threshold': 0.07,  # долларовый фоллбэк (сохранен для совместимости)
+    'profit_threshold_pct': 2.5,  # 15 центов от $6 ≈ 2.5%
     'check_interval': 60,      # Проверка каждую минуту (не меняем)
     'notification_interval': 600,  # Уведомления каждые 10 минут (увеличено в 2 раза)
     'trading_pairs': ['BTCUSDC', 'ETHUSDC'],
