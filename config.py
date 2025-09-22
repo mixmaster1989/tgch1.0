@@ -49,7 +49,7 @@ EXCLUDED_SYMBOLS = [
     # Из беседы: балласт/микро‑позиции и слабые проекты — исключить из сканера
     'PUADUSDT', 'DREYAIUSDT', 'LUMAUSDT', 'SUPRAUSDT', 'NOTUSDT', 'ACAUSDT',
     'KERNELUSDT', 'SAPIENUSDT', 'XLMUSDT', 'NEXOUSDT', 'CUSDT', 'THEUSDT',
-    'XNYUSDT', 'SENDUSDT', 'RSRUSDT'
+    'XNYUSDT', 'SENDUSDT', 'RSRUSDT', 'PROMPTUSDT', 'MBGUSDT'
 ]
 
 # PnL Monitor Configuration
