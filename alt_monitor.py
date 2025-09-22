@@ -16,6 +16,8 @@ from mexc_advanced_api import MexAdvancedAPI
 from pnl_monitor import PnLMonitor
 from anti_hype_filter import AntiHypeFilter
 from post_sale_balancer import PostSaleBalancer
+from active_50_50_balancer import Active5050Balancer
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,7 @@ class AltsMonitor:
         self.mex = MexAPI()
         self.adv = MexAdvancedAPI()
         self.anti_hype_filter = AntiHypeFilter()
+        self.balancer = Active5050Balancer()
         self.keep_assets = {'BTC', 'ETH', 'USDT', 'USDC'}
         self.last_action_time = 0
         self.last_notify_time = 0
@@ -350,7 +353,7 @@ class AltsMonitor:
                         logger.error(f"Ошибка PostSaleBalancer: {e}")
                 
                 time.sleep(0.5)
-        # BUY phase с анти-хайп фильтром
+        # BUY phase с анти-хайп фильтром И проверкой балансировщика
         balances = self._get_balances()
         usdt = balances.get('USDT', {}).get('free', 0.0)
         if usdt > 0.0:
@@ -367,7 +370,7 @@ class AltsMonitor:
                 # Проверяем анти-хайп фильтр для альта
                 alt_filter = self.anti_hype_filter.check_buy_permission(sym)
                 if not alt_filter['allowed']:
-                    logger.warning(f"🚫 {alt} покупка заблокирована: {alt_filter['reason']}")
+                    logger.warning(f"🚫 {alt} покупка заблокирована анти-хайп фильтром: {alt_filter['reason']}")
                     continue
                 # Применяем множитель фильтра
                 planned_amount = base_amount * alt_filter['multiplier']
@@ -379,6 +382,30 @@ class AltsMonitor:
                 if spend_amount < min_lot or spend_amount <= 0:
                     logger.info(f"❌ Недостаточно USDT для минимального лота {alt}: нужно ${min_lot:.2f}, есть ${usdt:.2f}")
                     break
+                
+                # 🔥 НОВОЕ: ПРОВЕРЯЕМ РАЗРЕШЕНИЕ У БАЛАНСИРОВЩИКА
+                logger.info(f"🔍 Запрашиваем разрешение у балансировщика на покупку {alt}...")
+                permission = self.balancer.check_purchase_permission(spend_amount, "ALTS")
+                
+                if not permission['allowed']:
+                    logger.warning(f"🚫 Балансировщик заблокировал покупку {alt}: {permission['reason']}")
+                    # Отправляем уведомление о блокировке
+                    blocked_message = (
+                        f"🚫 <b>ПОКУПКА {alt} ЗАБЛОКИРОВАНА БАЛАНСИРОВЩИКОМ</b>\n\n"
+                        f"💵 Сумма: ${spend_amount:.2f}\n"
+                        f"🛡️ Анти-хайп: {alt_filter['reason']} ×{alt_filter['multiplier']}\n\n"
+                        f"⚖️ <b>ПРИЧИНА БЛОКИРОВКИ:</b>\n"
+                        f"{permission['reason']}\n\n"
+                        f"📊 <b>ТЕКУЩИЕ ПРОПОРЦИИ:</b>\n"
+                        f"Альты: {permission['current_alts_ratio']*100:.1f}%\n"
+                        f"BTC/ETH: {permission['current_btceth_ratio']*100:.1f}%\n\n"
+                        f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+                    )
+                    PnLMonitor().send_telegram_message(blocked_message)
+                    continue
+                
+                logger.info(f"✅ Балансировщик разрешил покупку {alt}: {permission['reason']}")
+                
                 logger.info(f"Buying {alt} for ${spend_amount:.2f} (1% депозита ×{alt_filter['multiplier']})")
                 res = self._place_limit_buy_with_retries(sym, spend_amount, max_retries=3)
                 logger.info(f"BUY result: {res}")
@@ -388,6 +415,7 @@ class AltsMonitor:
                         f"💱 Актив: {alt}\n"
                         f"💵 Сумма: ${spend_amount:.2f}\n"
                         f"🛡️ Фильтр: {alt_filter['reason']} ×{alt_filter['multiplier']}\n"
+                        f"⚖️ Балансировщик: {permission['reason']}\n"
                         f"🆔 Ордер: <code>{res['orderId']}</code>\n"
                         f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
                     )
