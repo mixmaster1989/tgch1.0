@@ -126,9 +126,13 @@ class MarketScanner:
             logger.info(f"🔍 Получение топ {limit} торговых пар...")
             
             # Получаем 24h статистику по всем парам
-            tickers = self.mex_api.get_24hr_ticker()
-            if not isinstance(tickers, list):
-                logger.error("Ошибка получения тикеров")
+            try:
+                tickers = self.mex_api.get_24hr_ticker()
+                if not isinstance(tickers, list):
+                    logger.error("Ошибка получения тикеров")
+                    return self.get_fallback_pairs()
+            except Exception as e:
+                logger.error(f"Ошибка получения 24h изменения: {e}")
                 return self.get_fallback_pairs()
             
             # Фильтруем только USDT пары с достаточным объемом

@@ -5,10 +5,11 @@ MEX Trading Bot - Главный файл запуска
 """
 
 import asyncio
+import time
 import logging
 from logging.handlers import RotatingFileHandler
 import threading
-from native_trader_bot import NativeTraderBot
+# from native_trader_bot import NativeTraderBot  # Удален - не нужен
 from startup_dashboard import StartupDashboard
 from balance_monitor import BalanceMonitor
 from pnl_monitor import PnLMonitor
@@ -216,16 +217,20 @@ def main():
         logger.info("   ⚖️ Активный балансировщик 50/50 (каждые 10 сек)")
         # Скальперы отключены
         # logger.info("   ⚖️ Балансировщик USDT/USDC (каждый час)")
-        logger.info("   🤖 Telegram бот")
+        # logger.info("   🤖 Telegram бот")  # NativeTraderBot удален
         
-        # Запускаем нативного Трейдера
-        trader = NativeTraderBot()
-        trader.run()
+        # NativeTraderBot удален - не нужен
+
+        # Держим главный поток живым, чтобы PM2 не перезапускал процесс
+        while True:
+            time.sleep(3600)
         
     except KeyboardInterrupt:
         logger.info("🛑 Бот остановлен пользователем")
     except Exception as e:
+        import traceback
         logger.error(f"❌ Критическая ошибка: {e}")
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
 if __name__ == "__main__":
     main()
