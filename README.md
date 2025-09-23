@@ -32,6 +32,10 @@
 - **AltsMonitor** (`alt_monitor.py`)
   - Отслеживает «дешёвые» альты, применяет фильтры и может инициировать покупки через `Active5050Balancer`.
 
+- **StablecoinBalancer** (`stablecoin_balancer.py`)
+  - Балансирует USDT/USDC при явном дисбалансе, оставляя резерв под операции BTC/ETH.
+  - Может вызываться вручную (`utils/run_stablecoin_balance.py`) или интегрироваться по требованию.
+
 - **StartupDashboard** (`startup_dashboard.py`)
   - Отправляет стартовое уведомление в Telegram при запуске бота.
 
