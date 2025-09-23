@@ -214,3 +214,4 @@ def analyze_positions_for_symbol(symbol: str, trades: list) -> list:
 
 if __name__ == "__main__":
     main()
+
