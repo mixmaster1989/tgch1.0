@@ -29,8 +29,7 @@ def test_imports():
         from pnl_monitor import PnLMonitor
         logger.info("✅ PnLMonitor импортирован")
         
-        from native_trader_bot import NativeTraderBot
-        logger.info("✅ NativeTraderBot импортирован")
+        logger.info("⏭️ NativeTraderBot удалён — пропускаем импорт")
         
         from config import PNL_MONITOR_CONFIG
         logger.info("✅ Конфигурация PnL импортирована")
