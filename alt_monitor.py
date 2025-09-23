@@ -5,6 +5,10 @@ Alts Monitor
 - If unrealized PnL (AvgCost) > $0.15: place a near-market limit SELL to realize profit
 - With available USDT >= $5: buy from top-5 alts equally (BNB, SOL, XRP, ADA, DOGE)
 """
+
+############################################################
+# 📦 ИМПОРТЫ И БАЗОВАЯ НАСТРОЙКА
+############################################################
 import time
 import logging
 from datetime import datetime
@@ -29,6 +33,10 @@ NOTIFY_INTERVAL_SEC = 3600  # 1 час (изменено с 300 сек на 3600
 
 class AltsMonitor:
     def __init__(self):
+        ############################################################
+        # ⚙️ ИНИЦИАЛИЗАЦИЯ
+        # Назначение: клиенты API, фильтры, параметры
+        ############################################################
         self.mex = MexAPI()
         self.adv = MexAdvancedAPI()
         self.anti_hype_filter = AntiHypeFilter()
@@ -37,6 +45,9 @@ class AltsMonitor:
         self.last_action_time = 0
         self.last_notify_time = 0
 
+    ############################################################
+    # 💰 БАЛАНСЫ
+    ############################################################
     def _get_balances(self) -> Dict[str, Dict]:
         info = self.mex.get_account_info()
         result = {}
@@ -50,6 +61,9 @@ class AltsMonitor:
                 }
         return result
 
+    ############################################################
+    # 📚 ЛУЧШИЕ ЦЕНЫ bid/ask
+    ############################################################
     def _get_best_bid_ask(self, symbol: str):
         try:
             depth = self.mex.get_depth(symbol, 5)
@@ -61,6 +75,9 @@ class AltsMonitor:
         except Exception:
             return None, None
 
+    ############################################################
+    # 🧮 PnL AVG-COST ДЛЯ АЛЬТА
+    ############################################################
     def _avg_cost_pnl(self, symbol: str, portfolio_qty: float) -> Dict:
         base = symbol.rstrip('USDT').rstrip('USDC').replace('USDT','').replace('USDC','')
         quote = 'USDT' if symbol.endswith('USDT') else ('USDC' if symbol.endswith('USDC') else 'USDT')
@@ -118,6 +135,9 @@ class AltsMonitor:
             'realized_pnl': realized,
         }
 
+    ############################################################
+    # 🧾 ЛИМИТНАЯ ПРОДАЖА БЛИЗКО К РЫНКУ
+    ############################################################
     def _place_limit_sell_near_market(self, symbol: str, quantity: float) -> Dict:
         best_bid, best_ask = self._get_best_bid_ask(symbol)
         price = best_bid * 0.999 if best_bid else None
@@ -128,6 +148,9 @@ class AltsMonitor:
             return {'success': False, 'error': 'no_price'}
         return self.mex.place_order(symbol=symbol, side='SELL', quantity=quantity, price=price)
 
+    ############################################################
+    # 🛒 ЛИМИТНАЯ ПОКУПКА БЛИЗКО К РЫНКУ
+    ############################################################
     def _place_limit_buy_near_market(self, symbol: str, usdt_amount: float) -> Dict:
         best_bid, best_ask = self._get_best_bid_ask(symbol)
         price = best_ask * 1.001 if best_ask else None
@@ -149,6 +172,9 @@ class AltsMonitor:
             return {'success': False, 'error': 'qty_too_small'}
         return self.mex.place_order(symbol=symbol, side='BUY', quantity=qty, price=price)
 
+    ############################################################
+    # 💵 ОБЩИЙ ДЕПОЗИТ (USDT/USDC/АЛЬТЫ)
+    ############################################################
     def _get_total_deposit_usd(self) -> float:
         """Суммарный депозит в USD (USDT+USDC+стоимость активов по USDT)."""
         try:
@@ -192,6 +218,9 @@ class AltsMonitor:
         except Exception:
             return 0.0
 
+    ############################################################
+    # 📏 МИНИМАЛЬНЫЙ ЛОТ (в USDT)
+    ############################################################
     def _get_min_lot_usdt(self, symbol: str) -> float:
         """Минимальный лот в долларах по правилам биржи."""
         try:
@@ -212,6 +241,9 @@ class AltsMonitor:
         except Exception:
             return 0.0
 
+    ############################################################
+    # 🔁 ПОКУПКА С РЕТРАЯМИ
+    ############################################################
     def _place_limit_buy_with_retries(self, symbol: str, target_usdt: float, max_retries: int = 3) -> Dict:
         """Лимитная покупка с пересчетом минимального лота и цены на каждом ретрае."""
         delay = 1.0
@@ -233,6 +265,9 @@ class AltsMonitor:
             time.sleep(delay)
         return {'success': False, 'error': 'max_retries_exceeded'}
 
+    ############################################################
+    # 📋 МАПА ОТКРЫТЫХ ОРДЕРОВ ПО СИМВОЛАМ
+    ############################################################
     def _fetch_open_orders_map(self, symbols: List[str]) -> Dict[str, list]:
         result: Dict[str, list] = {}
         for s in symbols:
@@ -243,6 +278,9 @@ class AltsMonitor:
                 result[s] = []
         return result
 
+    ############################################################
+    # 📨 ОТЧЁТ ДЛЯ TELEGRAM (АЛЬТЫ)
+    ############################################################
     def _send_telegram_report(self, alt_items: List[Dict], orders_by_symbol: Dict[str, list]):
         if not alt_items:
             return
@@ -301,6 +339,9 @@ class AltsMonitor:
         lines.append(f"\n⏰ {datetime.now().strftime('%H:%M:%S')}")
         PnLMonitor().send_telegram_message("".join(lines))
 
+    ############################################################
+    # 🔄 ОДИН ЗАПУСК ЦИКЛА (SELL → BUY → REPORT)
+    ############################################################
     def run_once(self):
         balances = self._get_balances()
         # Collect ALT status first
@@ -442,6 +483,9 @@ class AltsMonitor:
             self._send_telegram_report(alt_items, orders_map)
             self.last_notify_time = now
 
+    ############################################################
+    # 📨 СТАТУСНЫЙ ОТЧЁТ (без торговли)
+    ############################################################
     def send_status_report_once(self):
         """Send one Telegram status report for alts without trading."""
         balances = self._get_balances()
@@ -469,6 +513,9 @@ class AltsMonitor:
         orders_map = self._fetch_open_orders_map(alt_symbols)
         self._send_telegram_report(alt_items, orders_map)
 
+    ############################################################
+    # ♻️ ЦИКЛ МОНИТОРИНГА АЛЬТОВ
+    ############################################################
     def start(self):
         logger.info("🚀 Starting AltsMonitor")
         while True:
