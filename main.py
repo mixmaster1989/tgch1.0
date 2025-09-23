@@ -18,7 +18,6 @@ from config import PNL_MONITOR_CONFIG
 from alt_monitor import AltsMonitor
 # from stablecoin_balancer import StablecoinBalancer
 from market_scanner import MarketScanner
-from orders_reporter import OrdersReporter
 from active_50_50_balancer import Active5050Balancer
 
 # Настройка логирования
@@ -161,17 +160,7 @@ def main():
         except Exception as e:
             logger.error(f"❌ Ошибка запуска монитора альтов: {e}")
         
-        # Запускаем репортер ордеров (каждые 10 минут)
-        try:
-            logger.info("🚀 Запуск репортера ордеров...")
-            orders_reporter = OrdersReporter()
-            def run_orders_reporter():
-                orders_reporter.start()
-            t = threading.Thread(target=run_orders_reporter, daemon=True)
-            t.start()
-            logger.info("✅ Репортер ордеров запущен в отдельном потоке")
-        except Exception as e:
-            logger.error(f"❌ Ошибка запуска репортера ордеров: {e}")
+        # Репортер ордеров удален как неиспользуемый
 
         # Репортер скальперов отключен - теперь используется ежечасный отчет в менеджере
         # scalpers_reporter = ScalpersReporter()
