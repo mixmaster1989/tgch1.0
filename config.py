@@ -54,13 +54,15 @@ EXCLUDED_SYMBOLS = [
     # Из беседы: балласт/микро‑позиции и слабые проекты — исключить из сканера
     'PUADUSDT', 'DREYAIUSDT', 'LUMAUSDT', 'SUPRAUSDT', 'NOTUSDT', 'ACAUSDT',
     'KERNELUSDT', 'SAPIENUSDT', 'XLMUSDT', 'NEXOUSDT', 'CUSDT', 'THEUSDT',
-    'XNYUSDT', 'SENDUSDT', 'RSRUSDT', 'PROMPTUSDT', 'MBGUSDT'
+    'XNYUSDT', 'SENDUSDT', 'RSRUSDT', 'PROMPTUSDT', 'MBGUSDT',
+    # Застрявшие монеты (более 15 дней в позиции)
+    'WBTUSDT', 'XAIUSDT', 'CROUSDT', 'TRUMPUSDT', 'ENAUSDT'
 ]
 
 # PnL Monitor Configuration
 PNL_MONITOR_CONFIG = {
     'profit_threshold': 0.07,  # долларовый фоллбэк (сохранен для совместимости)
-    'profit_threshold_pct': 2.5,  # 15 центов от $6 ≈ 2.5%
+    'profit_threshold_pct': 0.5,  # 15 центов от $6 ≈ 2.5%
     'check_interval': 60,      # Проверка каждую минуту (не меняем)
     'notification_interval': 600,  # Уведомления каждые 10 минут (увеличено в 2 раза)
     'trading_pairs': ['BTCUSDC', 'ETHUSDC'],

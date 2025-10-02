@@ -1,4 +1,5 @@
 import requests
+import os
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 class StartupDashboard:
@@ -21,28 +22,47 @@ class StartupDashboard:
             print(f"Ошибка отправки в Telegram: {e}")
             return None
     
-    def get_startup_info(self):
-        """Получить информацию для стартовой плашки (упрощённая версия)"""
-        return "Здесь будет стартовая плашка"
+    def send_video(self, video_path: str, caption: str = ""):
+        """Отправить видео в Telegram"""
+        if not os.path.exists(video_path):
+            print(f"Файл {video_path} не найден")
+            return None
+            
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendVideo"
+        
+        try:
+            with open(video_path, 'rb') as video_file:
+                files = {'video': video_file}
+                data = {
+                    'chat_id': self.chat_id,
+                    'caption': caption,
+                    'parse_mode': 'HTML'
+                }
+                response = requests.post(url, files=files, data=data)
+                return response.json()
+        except Exception as e:
+            print(f"Ошибка отправки видео в Telegram: {e}")
+            return None
     
     def send_startup_notification(self):
-        """Отправить стартовое уведомление"""
-        message = self.get_startup_info()
-        result = self.send_telegram_message(message)
+        """Отправить стартовое видео"""
+        video_path = "intro.mp4"
+        caption = "🚀 <b>MEXCAITRADE ЗАПУЩЕН</b>\n\n🤖 Торговый бот активирован и готов к работе!"
+        
+        result = self.send_video(video_path, caption)
         
         if result and result.get('ok'):
-            print("Стартовое уведомление отправлено в Telegram")
+            print("Стартовое видео отправлено в Telegram")
         else:
-            print("Ошибка отправки стартового уведомления")
-            print(f"Сообщение: {message}")
+            print("Ошибка отправки стартового видео")
+            print(f"Результат: {result}")
         
         return result
     
     def send_auto_purchase_notification(self):
-        """Упрощённое уведомление об автопокупках"""
-        return self.send_telegram_message("Здесь будет уведомление об автопокупках")
+        """Уведомление об автопокупках (отключено)"""
+        return None
     
     def send_extended_portfolio_report(self):
-        """Упрощённая заглушка расширенного отчёта о портфеле"""
-        result = self.send_telegram_message("Здесь будет расширенный отчёт о портфеле")
-        return bool(result and result.get('ok'))
+        """Расширенный отчёт о портфеле (отключен)"""
+        return True

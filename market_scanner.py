@@ -146,7 +146,7 @@ class MarketScanner:
     def get_top_trading_pairs(self, limit: int = 200) -> List[str]:
         """Получить топ торговых пар по объему торгов"""
         try:
-            logger.info(f"🔍 Получение топ {limit} торговых пар...")
+            # logger.info(f"🔍 Получение топ {limit} торговых пар...")
             
             # Получаем 24h статистику по всем парам
             try:
@@ -180,8 +180,8 @@ class MarketScanner:
                 excluded_set = set(EXCLUDED_SYMBOLS)
                 top_pairs = [s for s in top_pairs if s not in excluded_set]
             
-            logger.info(f"✅ Получено {len(top_pairs)} торговых пар")
-            logger.info(f"📊 Топ-5 по объему: {top_pairs[:5]}")
+            # logger.info(f"✅ Получено {len(top_pairs)} торговых пар")
+            # logger.info(f"📊 Топ-5 по объему: {top_pairs[:5]}")
             
             return top_pairs
             
@@ -213,7 +213,7 @@ class MarketScanner:
             if EXCLUDED_SYMBOLS:
                 excluded_set = set(EXCLUDED_SYMBOLS)
                 self.trading_pairs = [s for s in self.trading_pairs if s not in excluded_set]
-            logger.info(f"🔄 Список торговых пар обновлен: {len(self.trading_pairs)} пар")
+            # logger.info(f"🔄 Список торговых пар обновлен: {len(self.trading_pairs)} пар")
         except Exception as e:
             logger.error(f"Ошибка обновления торговых пар: {e}")
             self.trading_pairs = self.get_fallback_pairs()
@@ -462,7 +462,7 @@ class MarketScanner:
             
             # Если баланс недостаточный - пропускаем сканирование, но НЕ останавливаем цикл
             if usdt_balance < 6.0:
-                logger.info(f"⏭️ Пропуск сканирования: USDT=${usdt_balance:.2f} < $6.00 (экономия API лимитов)")
+                # logger.info(f"⏭️ Пропуск сканирования: USDT=${usdt_balance:.2f} < $6.00 (экономия API лимитов)")
                 # Пропускаем сканирование, но продолжаем цикл
                 pass
             else:
@@ -477,9 +477,10 @@ class MarketScanner:
                     self.report_counter += 1
                     if self.report_counter % 2 == 0:  # Отправляем каждый второй отчет
                         self.send_telegram_message(report)
-                        logger.info(f"📊 Отчет #{self.scan_count} отправлен в Telegram")
+                        # logger.info(f"📊 Отчет #{self.scan_count} отправлен в Telegram")
                     else:
-                        logger.info(f"📊 Отчет #{self.scan_count} пропущен (уменьшение спама)")
+                        # logger.info(f"📊 Отчет #{self.scan_count} пропущен (уменьшение спама)")
+                        pass
                     
                     # АВТОМАТИЧЕСКАЯ ПОКУПКА
                     await self.auto_buy_opportunities(scan_results)
@@ -497,13 +498,13 @@ class MarketScanner:
         try:
             buy_opportunities = scan_results.get('buy_opportunities', [])
             if not buy_opportunities:
-                logger.info("❌ Нет возможностей для покупки")
+                # logger.info("❌ Нет возможностей для покупки")
                 return
             
             # Проверяем баланс USDT
             usdt_balance = self.get_usdt_balance()
             if usdt_balance < 6.0:
-                logger.info(f"❌ Недостаточно USDT: ${usdt_balance:.2f}")
+                # logger.info(f"❌ Недостаточно USDT: ${usdt_balance:.2f}")
                 # Отправляем уведомление о недостатке средств
                 insufficient_message = (
                     f"💰 <b>НЕДОСТАТОЧНО СРЕДСТВ ДЛЯ ПОКУПКИ</b>\n\n"
@@ -527,7 +528,7 @@ class MarketScanner:
             purchase_amount = min(purchase_amount, PURCHASE_MAX_USDT)
             
             if purchase_amount < PURCHASE_MIN_USDT:
-                logger.info("❌ Сумма покупки слишком мала")
+                # logger.info("❌ Сумма покупки слишком мала")
                 # Отправляем уведомление о малой сумме
                 small_amount_message = (
                     f"💰 <b>СУММА ПОКУПКИ СЛИШКОМ МАЛА</b>\n\n"
@@ -542,7 +543,7 @@ class MarketScanner:
                 return
             
             # 🔥 НОВОЕ: ПРОВЕРЯЕМ РАЗРЕШЕНИЕ У БАЛАНСИРОВЩИКА
-            logger.info(f"🔍 Запрашиваем разрешение у балансировщика на покупку {symbol}...")
+            # logger.info(f"🔍 Запрашиваем разрешение у балансировщика на покупку {symbol}...")
             
             # Отправляем уведомление о запросе разрешения
             request_message = (
@@ -576,7 +577,7 @@ class MarketScanner:
                 self.send_telegram_message(blocked_message)
                 return
             
-            logger.info(f"✅ Балансировщик разрешил покупку: {permission['reason']}")
+            # logger.info(f"✅ Балансировщик разрешил покупку: {permission['reason']}")
             
             # Берем лучшую возможность
             best_opportunity = buy_opportunities[0]
@@ -590,7 +591,7 @@ class MarketScanner:
             purchase_amount = min(purchase_amount, PURCHASE_MAX_USDT)
             
             if purchase_amount < PURCHASE_MIN_USDT:
-                logger.info("❌ Сумма покупки слишком мала")
+                # logger.info("❌ Сумма покупки слишком мала")
                 # Отправляем уведомление о малой сумме
                 small_amount_message = (
                     f"💰 <b>СУММА ПОКУПКИ СЛИШКОМ МАЛА</b>\n\n"
@@ -604,7 +605,7 @@ class MarketScanner:
                 self.send_telegram_message(small_amount_message)
                 return
             
-            logger.info(f"🎯 Автоматическая покупка {symbol} на ${purchase_amount:.2f}")
+            # logger.info(f"🎯 Автоматическая покупка {symbol} на ${purchase_amount:.2f}")
             
             # Отправляем уведомление о начале покупки
             start_purchase_message = (
@@ -622,8 +623,9 @@ class MarketScanner:
             result = await self.execute_purchase(symbol, purchase_amount, best_opportunity)
             
             if result['success']:
-                logger.info(f"✅ Автопокупка выполнена: {symbol}")
+                # logger.info(f"✅ Автопокупка выполнена: {symbol}")
                 # Успешная покупка уже отправляется в execute_purchase
+                pass
             else:
                 logger.error(f"❌ Ошибка автопокупки: {result['error']}")
                 # Отправляем уведомление об ошибке
@@ -656,7 +658,7 @@ class MarketScanner:
     async def execute_purchase(self, symbol: str, usdt_amount: float, opportunity: Dict) -> Dict:
         """Выполнить покупку с ретраями"""
         try:
-            logger.info(f"🛒 Покупка {symbol} на ${usdt_amount:.2f} USDT...")
+            # logger.info(f"🛒 Покупка {symbol} на ${usdt_amount:.2f} USDT...")
             
             # Отправляем уведомление о начале покупки с ретраями
             retry_message = (
@@ -812,19 +814,11 @@ class MarketScanner:
     ############################################################
     async def start_scanning(self):
         """Запуск фонового сканирования"""
-        logger.info("🚀 Запуск фонового сканера рынка...")
-        logger.info(f"⏰ Интервал сканирования: {self.scan_interval} сек")
-        logger.info(f"📊 Анализируем пары: {len(self.trading_pairs)}")
+        # logger.info("🚀 Запуск фонового сканера рынка...")
+        # logger.info(f"⏰ Интервал сканирования: {self.scan_interval} сек")
+        # logger.info(f"📊 Анализируем пары: {len(self.trading_pairs)}")
         
-        # Отправляем уведомление о запуске
-        startup_message = (
-            f"🤖 <b>ФОНОВЫЙ СКАНЕР РЫНКА ЗАПУЩЕН</b>\n\n"
-            f"⏰ Интервал: {self.scan_interval} сек (5 минут)\n"
-            f"📊 Пар для анализа: {len(self.trading_pairs)}\n"
-            f"📱 Отчеты в Telegram каждые 5 минут\n\n"
-            f"🔄 Сканирование активно..."
-        )
-        self.send_telegram_message(startup_message)
+        # Стартовое уведомление убрано (отправляется только intro.mp4)
         
         while True:
             try:
@@ -832,7 +826,7 @@ class MarketScanner:
                 await asyncio.sleep(self.scan_interval)
                 
             except KeyboardInterrupt:
-                logger.info("🛑 Сканер остановлен")
+                # logger.info("🛑 Сканер остановлен")
                 break
             except Exception as e:
                 logger.error(f"❌ Критическая ошибка: {e}")

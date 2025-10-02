@@ -26,8 +26,8 @@ class AntiHypeFilter:
         self.ema_deviation = 0.027         # Усилено с 0.03 (более строгое отклонение от EMA20)
         
         # ДОПОЛНИТЕЛЬНЫЙ ФИЛЬТР ПРОТИВ ХАЙПА - ЗАПРЕТ ПОКУПОК БЛИЗКО К ДНЕВНОМУ ХАЮ
-        self.daily_high_safety_margin = 0.05  # 5% безопасная дистанция от дневного хая
-        self.daily_high_block_threshold = 0.03  # 3% от хая = полная блокировка
+        self.daily_high_safety_margin = 0.01  # 1% безопасная дистанция от дневного хая
+        self.daily_high_block_threshold = 0.002  # 0.2% от хая = полная блокировка
         
         # Кэш для избежания повторных запросов
         self.cache = {}
@@ -157,14 +157,14 @@ class AntiHypeFilter:
     def _check_daily_high_protection(self, symbol: str, current_price: float) -> Dict:
         """Проверка защиты от покупок близко к дневному хаю"""
         try:
-            # Получаем дневные свечи
-            daily_klines = self._get_klines_cached(symbol, '1d', 7)
-            if not daily_klines or len(daily_klines) < 1:
-                logger.warning(f"⚠️ Нет дневных свечей для {symbol}")
-                return {'blocked': False, 'reason': 'no_daily_data'}
+            # Получаем часовые свечи для расчета СЕГОДНЯШНЕГО дневного хая
+            hourly_klines = self._get_klines_cached(symbol, '1h', 24)
+            if not hourly_klines or len(hourly_klines) < 1:
+                logger.warning(f"⚠️ Нет часовых свечей для {symbol}")
+                return {'blocked': False, 'reason': 'no_hourly_data'}
             
-            # Находим дневной хай
-            daily_high = max([float(k[2]) for k in daily_klines])  # high price
+            # Находим СЕГОДНЯШНИЙ дневной хай из часовых свечей
+            daily_high = max([float(k[2]) for k in hourly_klines])  # high price
             
             # Рассчитываем расстояние от хая
             distance_from_high = (daily_high - current_price) / daily_high

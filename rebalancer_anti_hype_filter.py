@@ -31,8 +31,8 @@ class RebalancerAntiHypeFilter:
         self.volume_hype_threshold = 2.7       # Усилено с 3.0 (более строгая блокировка по объему)
         
         # ДОПОЛНИТЕЛЬНЫЙ ФИЛЬТР ПРОТИВ ХАЙПА - ЗАПРЕТ ПОКУПОК БЛИЗКО К ДНЕВНОМУ ХАЮ
-        self.daily_high_safety_margin = 0.05  # 5% безопасная дистанция от дневного хая
-        self.daily_high_block_threshold = 0.03  # 3% от хая = полная блокировка
+        self.daily_high_safety_margin = 0.01  # 1% безопасная дистанция от дневного хая
+        self.daily_high_block_threshold = 0.002  # 0.2% от хая = полная блокировка
         
         # Кэш для избежания повторных запросов
         self.cache = {}
@@ -144,6 +144,20 @@ class RebalancerAntiHypeFilter:
             return max(highs) if highs else 0.0
         except Exception as e:
             logger.error(f"Ошибка получения недавнего максимума: {e}")
+            return 0.0
+    
+    def _get_ath(self, symbol: str, max_days: int = 1000) -> float:
+        """Получить ATH (All-Time High) по дневным свечам.
+        Берем максимум High из доступных дневных свечей (до max_days).
+        """
+        try:
+            daily_klines = self.mex_api.get_klines(symbol, '1d', max_days)
+            if not daily_klines:
+                return 0.0
+            highs = [float(k[2]) for k in daily_klines]
+            return max(highs) if highs else 0.0
+        except Exception as e:
+            logger.error(f"Ошибка получения ATH: {e}")
             return 0.0
     
     def _check_volume_hype(self, klines: List, period: int = 20) -> bool:
@@ -269,27 +283,27 @@ class RebalancerAntiHypeFilter:
             price_4h_ago = float(klines_4h[-2][4]) if len(klines_4h) > 1 else current_price
             price_change_4h = ((current_price - price_4h_ago) / price_4h_ago) * 100
             
-            # Исторические максимумы
-            historical_max = self._get_historical_max(klines_1h, 30)
+            # Исторические максимумы: используем настоящий ATH по дневным свечам
+            ath_all_time = self._get_ath(symbol, 1000)
             recent_high = self._get_recent_high(klines_1h, 24)
             volume_hype = self._check_volume_hype(klines_1h, 20)
             
             logger.info(f"🔄 РЕБАЛАНСИРОВКА {symbol}: цена=${current_price:.4f}, ATR={atr_4h:.4f}, RSI={rsi_1h:.1f}")
             logger.info(f"🔄 РЕБАЛАНСИРОВКА {symbol}: изменение 4ч={price_change_4h:.2f}%, EMA20=${ema20_1h:.4f}")
-            logger.info(f"🔄 РЕБАЛАНСИРОВКА {symbol}: исторический макс=${historical_max:.4f}, недавний макс=${recent_high:.4f}")
+            logger.info(f"🔄 РЕБАЛАНСИРОВКА {symbol}: ATH=${ath_all_time:.4f}, недавний макс=${recent_high:.4f}")
             logger.info(f"🔄 РЕБАЛАНСИРОВКА {symbol}: объем хайп={'ДА' if volume_hype else 'НЕТ'}")
             
-            # 0. ПРОВЕРКА ИСТОРИЧЕСКОГО МАКСИМУМА (БЛОКИРОВКА) - МЕНЕЕ СТРОГАЯ
-            if historical_max > 0 and current_price > historical_max * (1 - self.max_historical_deviation):
-                logger.warning(f"🚫 РЕБАЛАНСИРОВКА {symbol}: БЛИЗКО К ИСТОРИЧЕСКОМУ МАКСИМУМУ! Цена ${current_price:.4f} vs макс ${historical_max:.4f}")
+            # 0. ПРОВЕРКА ATH (БЛОКИРОВКА)
+            if ath_all_time > 0 and current_price > ath_all_time * (1 - self.max_historical_deviation):
+                logger.warning(f"🚫 РЕБАЛАНСИРОВКА {symbol}: БЛИЗКО К ATH! Цена ${current_price:.4f} vs ATH ${ath_all_time:.4f}")
                 return {
                     'allowed': False, 
                     'multiplier': 0.0, 
-                    'reason': f'rebalancer_historical_max_block_{current_price:.0f}vs{historical_max:.0f}',
+                    'reason': f'rebalancer_ath_block_{current_price:.0f}vs{ath_all_time:.0f}',
                     'daily_high': daily_high_protection.get('daily_high'),
                     'current_price': current_price,
                     'distance_percent': daily_high_protection.get('distance_percent'),
-                    'block_type': 'historical_max_block'
+                    'block_type': 'ath_block'
                 }
             
             # 1. ПРОВЕРКА НЕДАВНЕГО МАКСИМУМА (ОГРАНИЧЕНИЕ) - МЕНЕЕ СТРОГОЕ
