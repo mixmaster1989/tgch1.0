@@ -519,7 +519,36 @@ class PortfolioBalancer:
             rebalance_plan = self.calculate_rebalance_trades(balances, values)
             
             if not rebalance_plan['trades']:
-                return {'success': False, 'error': 'Нет подходящих торгов для балансировки'}
+                # Сформируем понятную причину отсутствия сделок
+                btc_diff = rebalance_plan.get('btc_diff', 0.0)
+                eth_diff = rebalance_plan.get('eth_diff', 0.0)
+                usdc_balance = rebalance_plan.get('usdc_balance', 0.0)
+                btc_pnl = rebalance_plan.get('btc_pnl', 0.0)
+                eth_pnl = rebalance_plan.get('eth_pnl', 0.0)
+
+                reason_details = []
+                # Малое отклонение/суммы уже отфильтрованы раньше, но добавим подсказку
+                if values['total_value'] < self.min_rebalance_amount:
+                    reason_details.append(f"общая стоимость портфеля ${values['total_value']:.2f} < ${self.min_rebalance_amount}")
+
+                # Продажа BTC запрещена из-за PnL
+                if btc_diff > 0 and btc_pnl < 0:
+                    reason_details.append(f"BTC нужно продать на ~${abs(btc_diff):.2f}, но PnL BTC отрицательный (${btc_pnl:.2f})")
+
+                # Покупка ETH невозможна из-за нехватки USDC
+                if eth_diff < 0:
+                    eth_needed_value = abs(eth_diff)
+                    if usdc_balance < eth_needed_value:
+                        reason_details.append(f"не хватает USDC для покупки ETH: нужно ~${eth_needed_value:.2f}, есть ${usdc_balance:.2f}")
+
+                if not reason_details:
+                    reason_details.append("сделки меньше минимальных лотов или не проходят проверки безопасности")
+
+                return {
+                    'success': False,
+                    'error': 'Балансировка пропущена: ' + "; ".join(reason_details),
+                    'reason': 'no_trades'
+                }
             
             # 🔥 НОВАЯ ЛОГИКА: Выполняем торги в правильном порядке
             results = {
