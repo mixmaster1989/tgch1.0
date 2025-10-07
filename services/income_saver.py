@@ -221,11 +221,7 @@ class IncomeSaver:
             return {'success': False, 'error': 'amount_must_be_positive'}
 
         if not self._eligible_now(amount):
-            msg = (
-                f"<b>💤 PARK SKIPPED</b> — условие не выполнено\n"
-                f"Порог: ${self.threshold_usdt:.2f}, попытка спрятать: ${amount:.2f}"
-            )
-            self._send_telegram(msg)
+            # Не отправляем уведомление о SKIPPED, чтобы не спамить
             return {'success': False, 'error': 'not_eligible_now'}
 
         # Обеспечим наличие свободного USDT на сумму парковки (при нехватке продадим USDC→USDT)
