@@ -888,7 +888,7 @@ class PnLMonitor:
                             if order:
                                 logger.info(f"✅ {asset} продан успешно!")
                                 try:
-                                    saver = IncomeSaver(threshold_usdt=395.0)
+                                    saver = IncomeSaver(threshold_usdt=395.0, unit_amount_usdt=1.0)
                                     park_result = saver.try_park_usdt_to_usdp()
                                     logger.info(f"💼 IncomeSaver: {park_result}")
                                 except Exception as e:
@@ -1014,7 +1014,7 @@ class PnLMonitor:
 
                     # Периодическая парковка лишнего USDT в USDP (порог и кулдаун внутри IncomeSaver)
                     try:
-                        saver = IncomeSaver(threshold_usdt=395.0)
+                        saver = IncomeSaver(threshold_usdt=395.0, unit_amount_usdt=1.0)
                         saver.try_park_usdt_to_usdp()
                     except Exception as e:
                         logger.error(f"IncomeSaver periodic error: {e}")

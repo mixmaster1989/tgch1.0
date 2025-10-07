@@ -4,7 +4,7 @@ IncomeSaver — «парковка» лишнего USDT в USDP при прев
 
 Параметры по умолчанию:
 - threshold_usdt = 395.0
-- unit_amount_usdt = 5.0 (биржевой minNotional часто >= $5; тест на $1 возможен, но может быть отклонён)
+- unit_amount_usdt = 1.0
 - min_reserve_usdt = 20.0
 - cooldown_sec = 300
 - symbol = 'USDPUSDT'
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class IncomeSaver:
     def __init__(self,
                  threshold_usdt: float = 395.0,
-                 unit_amount_usdt: float = 5.0,
+                 unit_amount_usdt: float = 1.0,
                  min_reserve_usdt: float = 20.0,
                  cooldown_sec: int = 300,
                  symbol: str = 'USDPUSDT'):
