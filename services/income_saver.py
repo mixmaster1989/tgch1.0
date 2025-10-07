@@ -38,8 +38,6 @@ class IncomeSaver:
         self.cooldown_sec = cooldown_sec
         self.symbol = symbol
         self._last_action_ts = 0
-        self._last_fail_ts = 0
-        self.fail_backoff_sec = 1800  # 30 минут после ошибки не пытаться снова
         self.bot_token = TELEGRAM_BOT_TOKEN
         self.chat_id = TELEGRAM_CHAT_ID
 
@@ -210,9 +208,6 @@ class IncomeSaver:
     def _eligible_now(self, amount: float) -> bool:
         if (time.time() - self._last_action_ts) < self.cooldown_sec:
             return False
-        # Бэкофф после последнего FAIL
-        if (time.time() - self._last_fail_ts) < self.fail_backoff_sec:
-            return False
         portfolio_value = self.get_portfolio_value_usdt_excluding_usdp()
         # Порог по общей стоимости портфеля (исключая USDP)
         if portfolio_value < (self.threshold_usdt + amount):
@@ -235,8 +230,11 @@ class IncomeSaver:
 
         # Обеспечим наличие свободного USDT на сумму парковки (при нехватке продадим USDC→USDT)
         if not self.ensure_usdt_liquidity(amount):
-            # Не спамим в Telegram при нехватке ликвидности
-            self._last_fail_ts = time.time()
+            msg = (
+                f"<b>❌ PARK FAIL</b> — нет ликвидности USDT для ${amount:.2f}\n"
+                f"Попробуйте конвертацию USDC→USDT вручную или увеличьте баланс"
+            )
+            self._send_telegram(msg)
             return {'success': False, 'error': 'insufficient_liquidity_usdt'}
 
         rules = self._load_symbol_rules()
@@ -326,8 +324,13 @@ class IncomeSaver:
                 'notional': notional,
                 'note': 'placed_market_buy_usdpusdt'
             }
-        # Сохраняем время последнего FAIL, не шлём в Telegram (анти-спам)
-        self._last_fail_ts = time.time()
+        # Отправляем уведомление об ошибке ордера
+        msg = (
+            f"<b>❌ PARK FAIL</b> — ошибка ордера\n"
+            f"Сумма: ${amount:.2f}\n"
+            f"Причина: {order}"
+        )
+        self._send_telegram(msg)
         return {'success': False, 'error': f'order_failed: {order}'}
 
 
