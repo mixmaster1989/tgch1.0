@@ -49,6 +49,9 @@ class MexAPI:
         
         for attempt in range(self.max_retries):
             try:
+                # Безопасный таймаут по умолчанию, чтобы избежать зависаний
+                if 'timeout' not in kwargs or kwargs.get('timeout') is None:
+                    kwargs['timeout'] = 10
                 if method.upper() == 'GET':
                     response = requests.get(url, **kwargs)
                 elif method.upper() == 'POST':
@@ -339,3 +342,84 @@ class MexAPI:
             return {'success': True, 'total_amount': total, 'count': count, 'raw': data}
         except Exception as e:
             return {'success': False, 'error': str(e), 'raw': data}
+
+    # ===== Futures endpoints =====
+    def get_futures_account_info(self) -> Dict:
+        """Получить информацию о фьючерсном аккаунте"""
+        try:
+            # Используем базовый URL для фьючерсов
+            futures_base_url = 'https://contract.mexc.com'
+            
+            timestamp = int(time.time() * 1000)
+            query_string = f'timestamp={timestamp}'
+            signature = self._generate_signature(query_string)
+            
+            url = f"{futures_base_url}/api/v1/private/account/asset?{query_string}&signature={signature}"
+            return self._make_request_with_retry('GET', url, headers=self._get_headers(True))
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения фьючерсного баланса: {e}")
+            return {'error': str(e)}
+    
+    def get_futures_balance(self) -> Dict:
+        """Получить баланс фьючерсного счета"""
+        try:
+            # Альтернативный эндпоинт для баланса
+            futures_base_url = 'https://contract.mexc.com'
+            
+            timestamp = int(time.time() * 1000)
+            query_string = f'timestamp={timestamp}'
+            signature = self._generate_signature(query_string)
+            
+            url = f"{futures_base_url}/api/v1/account/info?{query_string}&signature={signature}"
+            return self._make_request_with_retry('GET', url, headers=self._get_headers(True))
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения фьючерсного баланса: {e}")
+            return {'error': str(e)}
+    
+    def transfer_spot_to_futures(self, asset: str, amount: float) -> Dict:
+        """Перевести средства со спотового счета на фьючерсный"""
+        try:
+            timestamp = int(time.time() * 1000)
+            params = {
+                'asset': asset,
+                'amount': str(amount),
+                'type': '1',  # 1: спот → фьючерсы
+                'timestamp': timestamp
+            }
+            
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = self._generate_signature(query_string)
+            
+            url = f"{self.base_url}/api/v3/asset/transfer"
+            data = f"{query_string}&signature={signature}"
+            
+            return self._make_request_with_retry('POST', url, data=data, headers=self._get_headers(True))
+            
+        except Exception as e:
+            logger.error(f"Ошибка перевода спот → фьючерсы: {e}")
+            return {'error': str(e)}
+    
+    def transfer_futures_to_spot(self, asset: str, amount: float) -> Dict:
+        """Перевести средства с фьючерсного счета на спотовый"""
+        try:
+            timestamp = int(time.time() * 1000)
+            params = {
+                'asset': asset,
+                'amount': str(amount),
+                'type': '2',  # 2: фьючерсы → спот
+                'timestamp': timestamp
+            }
+            
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = self._generate_signature(query_string)
+            
+            url = f"{self.base_url}/api/v3/asset/transfer"
+            data = f"{query_string}&signature={signature}"
+            
+            return self._make_request_with_retry('POST', url, data=data, headers=self._get_headers(True))
+            
+        except Exception as e:
+            logger.error(f"Ошибка перевода фьючерсы → спот: {e}")
+            return {'error': str(e)}

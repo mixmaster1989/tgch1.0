@@ -20,6 +20,7 @@ from portfolio_balancer import PortfolioBalancer
 from mexc_advanced_api import MexAdvancedAPI
 from post_sale_balancer import PostSaleBalancer
 from logging.handlers import RotatingFileHandler
+from services.income_saver import IncomeSaver
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -886,6 +887,12 @@ class PnLMonitor:
                             order = self.market_sell(symbol, quantity)
                             if order:
                                 logger.info(f"✅ {asset} продан успешно!")
+                                try:
+                                    saver = IncomeSaver(threshold_usdt=395.0)
+                                    park_result = saver.try_park_usdt_to_usdp()
+                                    logger.info(f"💼 IncomeSaver: {park_result}")
+                                except Exception as e:
+                                    logger.error(f"IncomeSaver ошибка: {e}")
                             else:
                                 logger.error(f"❌ Ошибка продажи {asset}")
                         else:
