@@ -13,6 +13,7 @@ IncomeSaver — «парковка» лишнего USDT в USDP при прев
 import time
 import logging
 from typing import Optional, Dict
+from decimal import Decimal, ROUND_DOWN, getcontext
 
 from mex_api import MexAPI
 from mexc_advanced_api import MexAdvancedAPI
@@ -72,7 +73,17 @@ class IncomeSaver:
     def _round_to_step(value: float, step: float) -> float:
         if step <= 0:
             return value
-        return (int(value / step)) * step
+        # Используем Decimal для точного соответствия шкале биржи
+        try:
+            getcontext().prec = 28
+            d_value = Decimal(str(value))
+            d_step = Decimal(str(step))
+            # Количество шагов вниз (floor)
+            steps = (d_value / d_step).to_integral_value(rounding=ROUND_DOWN)
+            rounded = steps * d_step
+            return float(rounded)
+        except Exception:
+            return (int(value / step)) * step
 
     def _load_symbol_rules(self) -> Dict:
         try:
@@ -234,6 +245,7 @@ class IncomeSaver:
         step_size = rules.get('stepSize', 0.0) or 0.0
         tick_size = rules.get('tickSize', 0.0) or 0.0
         min_notional = rules.get('minNotional', 5.0) or 5.0
+        min_qty = rules.get('minQty', 0.0) or 0.0
 
         # Проверка минимального нотионала
         if amount < min_notional:
@@ -247,6 +259,9 @@ class IncomeSaver:
             qty = self._round_to_step(raw_qty, step_size)
             if qty <= 0:
                 qty = step_size
+        # Учитываем минимальное количество
+        if min_qty > 0 and qty < min_qty:
+            qty = min_qty
 
         # Контроль нотионала после округления
         notional = qty * price
@@ -264,7 +279,21 @@ class IncomeSaver:
 
         # Ограничение на цену (tickSize) – торговля маркетом, так что не критично
         # Размещаем маркет BUY (через MexAPI.place_market_order)
-        order = self.mex_api.place_market_order(self.symbol, 'BUY', qty)
+        # Сформируем строковое количество с точным числом знаков после запятой согласно step_size
+        def format_qty(q: float, step: float) -> str:
+            try:
+                if step <= 0:
+                    return str(q)
+                step_dec = Decimal(str(step))
+                # Определяем количество знаков после запятой у шага
+                scale = -step_dec.as_tuple().exponent
+                q_dec = Decimal(str(q)).quantize(Decimal(1).scaleb(-scale), rounding=ROUND_DOWN)
+                return format(q_dec, f'.{scale}f')
+            except Exception:
+                return str(q)
+
+        qty_str = format_qty(qty, step_size)
+        order = self.mex_api.place_market_order(self.symbol, 'BUY', float(qty_str))
 
         if order and isinstance(order, dict) and order.get('orderId'):
             self._last_action_ts = time.time()
