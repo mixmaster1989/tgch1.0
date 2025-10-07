@@ -928,6 +928,7 @@ class PnLMonitor:
                 # Общая стоимость портфеля (включая стейблкоины)
                 usdt_balance = 0.0
                 usdc_balance = 0.0
+                usdp_balance = 0.0
                 total_portfolio = 0.0
                 
                 try:
@@ -943,6 +944,9 @@ class PnLMonitor:
                                 total_portfolio += total
                             elif asset == 'USDC':
                                 usdc_balance = total
+                                total_portfolio += total
+                            elif asset == 'USDP':
+                                usdp_balance = total
                                 total_portfolio += total
                             else:
                                 try:
@@ -960,7 +964,8 @@ class PnLMonitor:
                     f"🏦 <b>ОБЩАЯ СТОИМОСТЬ</b>: <code>${total_portfolio:.2f}</code>\n\n",
                     f"💵 <b>СТАБИЛЬНЫЕ МОНЕТЫ:</b>\n",
                     f"   💰 USDT: ${usdt_balance:.2f}\n",
-                    f"   💰 USDC: ${usdc_balance:.2f}\n\n"
+                    f"   💰 USDC: ${usdc_balance:.2f}\n",
+                    f"   💰 USDP (парковка): ${usdp_balance:.2f}\n\n"
                 ]
                 for item in pnl_data:
                     pnl_status = "📈" if item['pnl'] > 0 else "📉" if item['pnl'] < 0 else "➡️"

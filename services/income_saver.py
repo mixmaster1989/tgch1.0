@@ -16,6 +16,8 @@ from typing import Optional, Dict
 
 from mex_api import MexAPI
 from mexc_advanced_api import MexAdvancedAPI
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,8 @@ class IncomeSaver:
         self.cooldown_sec = cooldown_sec
         self.symbol = symbol
         self._last_action_ts = 0
+        self.bot_token = TELEGRAM_BOT_TOKEN
+        self.chat_id = TELEGRAM_CHAT_ID
 
     # ==== balances ====
     def get_usdt_balance(self) -> float:
@@ -160,6 +164,17 @@ class IncomeSaver:
             logger.warning(f"IncomeSaver: не удалось обеспечить USDT ликвидность: {e}")
             return False
 
+    # ==== telegram ====
+    def _send_telegram(self, text: str) -> None:
+        try:
+            if not self.bot_token or not self.chat_id:
+                return
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            data = { 'chat_id': self.chat_id, 'text': text, 'parse_mode': 'HTML' }
+            requests.post(url, data=data, timeout=10)
+        except Exception:
+            pass
+
     # ==== core ====
     def _eligible_now(self, amount: float) -> bool:
         if (time.time() - self._last_action_ts) < self.cooldown_sec:
@@ -181,10 +196,20 @@ class IncomeSaver:
             return {'success': False, 'error': 'amount_must_be_positive'}
 
         if not self._eligible_now(amount):
+            msg = (
+                f"<b>💤 PARK SKIPPED</b> — условие не выполнено\n"
+                f"Порог: ${self.threshold_usdt:.2f}, попытка спрятать: ${amount:.2f}"
+            )
+            self._send_telegram(msg)
             return {'success': False, 'error': 'not_eligible_now'}
 
         # Обеспечим наличие свободного USDT на сумму парковки (при нехватке продадим USDC→USDT)
         if not self.ensure_usdt_liquidity(amount):
+            msg = (
+                f"<b>❌ PARK FAIL</b> — нет ликвидности USDT для ${amount:.2f}\n"
+                f"Попробуйте конвертацию USDC→USDT вручную или увеличьте баланс"
+            )
+            self._send_telegram(msg)
             return {'success': False, 'error': 'insufficient_liquidity_usdt'}
 
         rules = self._load_symbol_rules()
@@ -229,6 +254,14 @@ class IncomeSaver:
 
         if order and isinstance(order, dict) and order.get('orderId'):
             self._last_action_ts = time.time()
+            msg = (
+                f"<b>✅ PARK OK</b> — USDT→USDP\n"
+                f"Сумма: ${amount:.2f}\n"
+                f"Qty: {qty:.4f} USDP @ ~${price:.4f}\n"
+                f"Notional: ${notional:.2f}\n"
+                f"OrderId: <code>{order['orderId']}</code>"
+            )
+            self._send_telegram(msg)
             return {
                 'success': True,
                 'symbol': self.symbol,
@@ -238,6 +271,12 @@ class IncomeSaver:
                 'notional': notional,
                 'note': 'placed_market_buy_usdpusdt'
             }
+        msg = (
+            f"<b>❌ PARK FAIL</b> — ошибка ордера\n"
+            f"Сумма: ${amount:.2f}\n"
+            f"Причина: {order}"
+        )
+        self._send_telegram(msg)
         return {'success': False, 'error': f'order_failed: {order}'}
 
 
