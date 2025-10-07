@@ -140,6 +140,20 @@ class IncomeSaver:
     def ensure_usdt_liquidity(self, required_usdt: float) -> bool:
         """Обеспечить наличие свободного USDT. При нехватке — продать USDC за USDT (USDCUSDT SELL)."""
         try:
+            # Сначала отменим открытые BUY-ордера по USDCUSDT, чтобы освободить locked USDT
+            try:
+                open_orders = self.mex_api.get_open_orders('USDCUSDT')
+                for o in open_orders or []:
+                    if o.get('side') == 'BUY' and o.get('status') in {'NEW','PARTIALLY_FILLED'}:
+                        oid = o.get('orderId')
+                        if oid:
+                            try:
+                                self.mex_api.cancel_order('USDCUSDT', oid)
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
             if required_usdt <= 0:
                 return True
             usdt_free = self.get_usdt_balance()
