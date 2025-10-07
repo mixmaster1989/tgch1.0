@@ -38,6 +38,8 @@ class IncomeSaver:
         self.cooldown_sec = cooldown_sec
         self.symbol = symbol
         self._last_action_ts = 0
+        self._last_fail_ts = 0
+        self.fail_backoff_sec = 1800  # 30 минут после ошибки не пытаться снова
         self.bot_token = TELEGRAM_BOT_TOKEN
         self.chat_id = TELEGRAM_CHAT_ID
 
@@ -172,11 +174,15 @@ class IncomeSaver:
                 return True
             deficit = required_usdt - usdt_free
             usdc_free = self.get_usdc_balance()
+            # Если нет USDT, но есть USDC — конвертируем хотя бы $1 USDC в USDT
+            if usdc_free <= 0 and required_usdt <= 1.01:
+                # пробуем купить USDC за USDT не получится; здесь нет USDC — нечего продавать
+                return False
             if usdc_free <= 0:
                 return False
             price = self.get_symbol_price('USDCUSDT') or 1.0
             # Сколько USDC нужно продать, чтобы получить требуемый USDT
-            qty_usdc = deficit / max(price, 1e-8)
+            qty_usdc = max(1.0, deficit / max(price, 1e-8))  # минимум 1 USDC
             # Округлим до 2 знаков (типично для стейблов) и добавим небольшой запас
             qty_usdc = round(qty_usdc * 1.01, 2)
             if qty_usdc > usdc_free:
@@ -204,6 +210,9 @@ class IncomeSaver:
     def _eligible_now(self, amount: float) -> bool:
         if (time.time() - self._last_action_ts) < self.cooldown_sec:
             return False
+        # Бэкофф после последнего FAIL
+        if (time.time() - self._last_fail_ts) < self.fail_backoff_sec:
+            return False
         portfolio_value = self.get_portfolio_value_usdt_excluding_usdp()
         # Порог по общей стоимости портфеля (исключая USDP)
         if portfolio_value < (self.threshold_usdt + amount):
@@ -226,11 +235,8 @@ class IncomeSaver:
 
         # Обеспечим наличие свободного USDT на сумму парковки (при нехватке продадим USDC→USDT)
         if not self.ensure_usdt_liquidity(amount):
-            msg = (
-                f"<b>❌ PARK FAIL</b> — нет ликвидности USDT для ${amount:.2f}\n"
-                f"Попробуйте конвертацию USDC→USDT вручную или увеличьте баланс"
-            )
-            self._send_telegram(msg)
+            # Не спамим в Telegram при нехватке ликвидности
+            self._last_fail_ts = time.time()
             return {'success': False, 'error': 'insufficient_liquidity_usdt'}
 
         rules = self._load_symbol_rules()
@@ -291,6 +297,16 @@ class IncomeSaver:
         qty_str = format_qty(qty, step_size)
         order = self.mex_api.place_market_order(self.symbol, 'BUY', float(qty_str))
 
+        # Если ошибка масштаба количества — попробуем один понижающий ретрай на один шаг
+        if isinstance(order, dict) and order.get('error') and 'quantity scale is invalid' in str(order.get('message', '')).lower():
+            try:
+                # уменьшаем на один шаг
+                adj_qty = max(qty - (step_size or qty), min_qty or (step_size or qty))
+                adj_qty_str = format_qty(adj_qty, step_size)
+                order = self.mex_api.place_market_order(self.symbol, 'BUY', float(adj_qty_str))
+            except Exception:
+                pass
+
         if order and isinstance(order, dict) and order.get('orderId'):
             self._last_action_ts = time.time()
             msg = (
@@ -310,12 +326,8 @@ class IncomeSaver:
                 'notional': notional,
                 'note': 'placed_market_buy_usdpusdt'
             }
-        msg = (
-            f"<b>❌ PARK FAIL</b> — ошибка ордера\n"
-            f"Сумма: ${amount:.2f}\n"
-            f"Причина: {order}"
-        )
-        self._send_telegram(msg)
+        # Сохраняем время последнего FAIL, не шлём в Telegram (анти-спам)
+        self._last_fail_ts = time.time()
         return {'success': False, 'error': f'order_failed: {order}'}
 
 
