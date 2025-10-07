@@ -1004,14 +1004,21 @@ class PnLMonitor:
                 try:
                     # Проверяем PnL и продаем при необходимости
                     self.check_pnl_and_sell()
-                    
+
                     # Проверяем необходимость балансировки портфеля (синхронно)
                     try:
                         # Вызываем синхронную версию балансировки
                         await self.check_portfolio_balance_sync()
                     except Exception as balance_error:
                         logger.error(f"Ошибка проверки балансировки: {balance_error}")
-                    
+
+                    # Периодическая парковка лишнего USDT в USDP (порог и кулдаун внутри IncomeSaver)
+                    try:
+                        saver = IncomeSaver(threshold_usdt=395.0)
+                        saver.try_park_usdt_to_usdp()
+                    except Exception as e:
+                        logger.error(f"IncomeSaver periodic error: {e}")
+
                     # Ждем до следующей проверки
                     time.sleep(self.check_interval)
                     
