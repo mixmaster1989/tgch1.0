@@ -50,6 +50,19 @@ class IncomeSaver:
             logger.warning(f"IncomeSaver: ошибка чтения баланса USDT: {e}")
             return 0.0
 
+    def get_usdc_balance(self) -> float:
+        try:
+            account_info = self.mex_api.get_account_info()
+            if not isinstance(account_info, dict):
+                return 0.0
+            for b in account_info.get('balances', []):
+                if b.get('asset') == 'USDC':
+                    return float(b.get('free', 0))
+            return 0.0
+        except Exception as e:
+            logger.warning(f"IncomeSaver: ошибка чтения баланса USDC: {e}")
+            return 0.0
+
     # ==== rules and rounding ====
     @staticmethod
     def _round_to_step(value: float, step: float) -> float:
@@ -75,15 +88,85 @@ class IncomeSaver:
             logger.warning(f"IncomeSaver: не удалось получить цену {self.symbol}: {e}")
             return None
 
+    def get_symbol_price(self, symbol: str) -> Optional[float]:
+        try:
+            t = self.mex_api.get_ticker_price(symbol)
+            if isinstance(t, dict) and 'price' in t:
+                return float(t['price'])
+            return None
+        except Exception:
+            return None
+
+    def get_portfolio_value_usdt_excluding_usdp(self) -> float:
+        """Рассчитать общую стоимость портфеля в USDT, исключая USDP."""
+        try:
+            account_info = self.mex_api.get_account_info()
+            if not isinstance(account_info, dict):
+                return 0.0
+            total_usdt_value = 0.0
+            balances = account_info.get('balances', []) or []
+            # Курс USDCUSDT для конвертации USDC→USDT
+            usdc_usdt = self.get_symbol_price('USDCUSDT') or 1.0
+            for b in balances:
+                try:
+                    asset = b.get('asset')
+                    free_amt = float(b.get('free', 0) or 0)
+                    locked_amt = float(b.get('locked', 0) or 0)
+                    total_amt = free_amt + locked_amt
+                    if total_amt <= 0:
+                        continue
+                    if asset == 'USDP':
+                        # Парковочная валюта исключается
+                        continue
+                    if asset == 'USDT':
+                        total_usdt_value += total_amt
+                    elif asset == 'USDC':
+                        total_usdt_value += total_amt * usdc_usdt
+                    else:
+                        price = self.get_symbol_price(f"{asset}USDT")
+                        if price:
+                            total_usdt_value += total_amt * price
+                except Exception:
+                    continue
+            return total_usdt_value
+        except Exception as e:
+            logger.warning(f"IncomeSaver: не удалось рассчитать стоимость портфеля: {e}")
+            return 0.0
+
+    def ensure_usdt_liquidity(self, required_usdt: float) -> bool:
+        """Обеспечить наличие свободного USDT. При нехватке — продать USDC за USDT (USDCUSDT SELL)."""
+        try:
+            if required_usdt <= 0:
+                return True
+            usdt_free = self.get_usdt_balance()
+            if usdt_free >= required_usdt:
+                return True
+            deficit = required_usdt - usdt_free
+            usdc_free = self.get_usdc_balance()
+            if usdc_free <= 0:
+                return False
+            price = self.get_symbol_price('USDCUSDT') or 1.0
+            # Сколько USDC нужно продать, чтобы получить требуемый USDT
+            qty_usdc = deficit / max(price, 1e-8)
+            # Округлим до 2 знаков (типично для стейблов) и добавим небольшой запас
+            qty_usdc = round(qty_usdc * 1.01, 2)
+            if qty_usdc > usdc_free:
+                qty_usdc = round(usdc_free, 2)
+            if qty_usdc <= 0:
+                return False
+            order = self.mex_api.place_market_order('USDCUSDT', 'SELL', qty_usdc)
+            return bool(order and isinstance(order, dict) and order.get('orderId'))
+        except Exception as e:
+            logger.warning(f"IncomeSaver: не удалось обеспечить USDT ликвидность: {e}")
+            return False
+
     # ==== core ====
-    def _eligible_now(self) -> bool:
+    def _eligible_now(self, amount: float) -> bool:
         if (time.time() - self._last_action_ts) < self.cooldown_sec:
             return False
-        usdt = self.get_usdt_balance()
-        if usdt < (self.threshold_usdt + self.unit_amount_usdt):
-            return False
-        # не трогаем резерв
-        if (usdt - self.unit_amount_usdt) < self.min_reserve_usdt:
+        portfolio_value = self.get_portfolio_value_usdt_excluding_usdp()
+        # Порог по общей стоимости портфеля (исключая USDP)
+        if portfolio_value < (self.threshold_usdt + amount):
             return False
         return True
 
@@ -97,8 +180,12 @@ class IncomeSaver:
         if amount <= 0:
             return {'success': False, 'error': 'amount_must_be_positive'}
 
-        if not self._eligible_now():
+        if not self._eligible_now(amount):
             return {'success': False, 'error': 'not_eligible_now'}
+
+        # Обеспечим наличие свободного USDT на сумму парковки (при нехватке продадим USDC→USDT)
+        if not self.ensure_usdt_liquidity(amount):
+            return {'success': False, 'error': 'insufficient_liquidity_usdt'}
 
         rules = self._load_symbol_rules()
         price = self.get_price()
