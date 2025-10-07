@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class IncomeSaver:
     def __init__(self,
                  threshold_usdt: float = 395.0,
-                 unit_amount_usdt: float = 1.0,
+                 unit_amount_usdt: float = 5.0,
                  min_reserve_usdt: float = 20.0,
                  cooldown_sec: int = 300,
                  symbol: str = 'USDPUSDT'):
@@ -172,15 +172,15 @@ class IncomeSaver:
                 return True
             deficit = required_usdt - usdt_free
             usdc_free = self.get_usdc_balance()
-            # Если нет USDT, но есть USDC — конвертируем хотя бы $1 USDC в USDT
-            if usdc_free <= 0 and required_usdt <= 1.01:
+            # Если нет USDT, но есть USDC — конвертируем хотя бы $5 USDC в USDT (под minNotional USDP)
+            if usdc_free <= 0 and required_usdt <= 5.01:
                 # пробуем купить USDC за USDT не получится; здесь нет USDC — нечего продавать
                 return False
             if usdc_free <= 0:
                 return False
             price = self.get_symbol_price('USDCUSDT') or 1.0
             # Сколько USDC нужно продать, чтобы получить требуемый USDT
-            qty_usdc = max(1.0, deficit / max(price, 1e-8))  # минимум 1 USDC
+            qty_usdc = max(5.0, deficit / max(price, 1e-8))  # минимум 5 USDC
             # Округлим до 2 знаков (типично для стейблов) и добавим небольшой запас
             qty_usdc = round(qty_usdc * 1.01, 2)
             if qty_usdc > usdc_free:
